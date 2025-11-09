@@ -50,8 +50,8 @@ struct ContentView: View {
     }
 }
 
-private extension ConnectionProfile {
-    var kindDescription: String {
+extension ConnectionProfile {
+    fileprivate var kindDescription: String {
         switch kind {
         case .postgreSQL:
             "PostgreSQL"

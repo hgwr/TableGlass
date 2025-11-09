@@ -23,4 +23,8 @@ final class AppEnvironment: ObservableObject {
     func makeConnectionListViewModel() -> ConnectionListViewModel {
         ConnectionListViewModel(connectionStore: dependencies.connectionStore)
     }
+
+    func makeConnectionManagementViewModel() -> ConnectionManagementViewModel {
+        ConnectionManagementViewModel(connectionStore: dependencies.connectionStore)
+    }
 }

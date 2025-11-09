@@ -2,6 +2,8 @@ import Foundation
 
 public protocol ConnectionStore: Sendable {
     func listConnections() async throws -> [ConnectionProfile]
+    func saveConnection(_ connection: ConnectionProfile) async throws
+    func deleteConnection(id: ConnectionProfile.ID) async throws
 }
 
 public struct PreviewConnectionStore: ConnectionStore {
@@ -29,13 +31,34 @@ public struct PreviewConnectionStore: ConnectionStore {
                 host: "localhost",
                 port: 0,
                 username: ""
-            )
+            ),
         ]
+    }
+
+    /// No-op stub for preview purposes. This method intentionally does nothing.
+    public func saveConnection(_ connection: ConnectionProfile) async throws {
+        _ = connection
+    }
+
+    /// No-op stub for preview purposes. This method intentionally does nothing.
+    public func deleteConnection(id: ConnectionProfile.ID) async throws {
+        _ = id
     }
 }
 
 public struct EmptyConnectionStore: ConnectionStore {
     public init() {}
 
+    /// No-op: Empty store does not contain any connections.
     public func listConnections() async throws -> [ConnectionProfile] { [] }
+
+    /// No-op: Empty store does not save connections.
+    public func saveConnection(_ connection: ConnectionProfile) async throws {
+        _ = connection
+    }
+
+    /// No-op: Empty store does not delete connections.
+    public func deleteConnection(id: ConnectionProfile.ID) async throws {
+        _ = id
+    }
 }

@@ -5,9 +5,10 @@
 //  Created by Shigeru Hagiwara on 2025/11/09.
 //
 
-import Testing
-@testable import TableGlass
 import TableGlassKit
+import Testing
+
+@testable import TableGlass
 
 struct TableGlassTests {
 
@@ -37,5 +38,15 @@ private struct StubConnectionStore: ConnectionStore {
 
     func listConnections() async throws -> [ConnectionProfile] {
         connections
+    }
+
+    /// No-op stub for testing: does not persist the connection.
+    func saveConnection(_ connection: ConnectionProfile) async throws {
+        _ = connection
+    }
+
+    /// No-op stub for testing: does not delete any connection.
+    func deleteConnection(id: ConnectionProfile.ID) async throws {
+        _ = id
     }
 }
