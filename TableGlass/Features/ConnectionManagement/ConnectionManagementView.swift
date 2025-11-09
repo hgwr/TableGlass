@@ -3,6 +3,7 @@ import TableGlassKit
 
 struct ConnectionManagementView: View {
     @StateObject private var viewModel: ConnectionManagementViewModel
+    @State private var isDeleteConfirmationPresented = false
 
     init(viewModel: ConnectionManagementViewModel) {
         _viewModel = StateObject(wrappedValue: viewModel)
@@ -106,9 +107,7 @@ struct ConnectionManagementView: View {
     private var footerButtons: some View {
         HStack {
             Button(role: .destructive) {
-                Task {
-                    await viewModel.deleteSelectedConnection()
-                }
+                isDeleteConfirmationPresented = true
             } label: {
                 Label("Delete", systemImage: "trash")
             }
@@ -124,6 +123,18 @@ struct ConnectionManagementView: View {
                 Label(viewModel.isNewConnection ? "Create" : "Save", systemImage: "tray.and.arrow.down")
             }
             .disabled(!viewModel.draft.isValid || viewModel.isSaving)
+        }
+        .alert("Delete Connection?", isPresented: $isDeleteConfirmationPresented) {
+            Button("Delete", role: .destructive) {
+                Task {
+                    await viewModel.deleteSelectedConnection()
+                }
+            }
+            Button("Cancel", role: .cancel) {
+                isDeleteConfirmationPresented = false
+            }
+        } message: {
+            Text("This action removes the selected connection and cannot be undone.")
         }
     }
 
