@@ -24,7 +24,7 @@ public struct PreviewConnectionStore: ConnectionStore {
                 username: "root"
             ),
             ConnectionProfile(
-                name: "Sandbox Sqlite",
+                name: "Sandbox SQLite",
                 kind: .sqlite,
                 host: "localhost",
                 port: 0,
