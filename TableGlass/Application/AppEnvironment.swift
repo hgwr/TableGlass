@@ -12,7 +12,8 @@ final class AppEnvironment: ObservableObject {
     }
 
     static func makeDefault() -> AppEnvironment {
-        AppEnvironment(dependencies: .preview)
+        // TODO: Replace with a real implementation of ConnectionStore.
+        AppEnvironment(dependencies: .empty)
     }
 
     static func makePreview() -> AppEnvironment {
