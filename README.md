@@ -12,4 +12,8 @@ Designed for macOS. Built using SwiftUI. It aims to be lightweight and easy to u
 ## Architecture Overview
 
 - `TableGlassKit`: Swift framework providing shared business logic and database abstractions.
+  - `Connections`: handles saved profiles and retrieval stores used by the UI layer.
+  - `Database`: defines async/await protocols for connections and transactions.
+    Schema metadata models live here.
+    Placeholder factories for PostgresNIO/MySQLNIO/sqlite3 stay until driver integrations land.
 - `TableGlass`: SwiftUI app target that renders the UI and injects `TableGlassKit` services.
