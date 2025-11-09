@@ -35,10 +35,12 @@ public struct PreviewConnectionStore: ConnectionStore {
         ]
     }
 
+    /// No-op stub for preview purposes. This method intentionally does nothing.
     public func saveConnection(_ connection: ConnectionProfile) async throws {
         _ = connection
     }
 
+    /// No-op stub for preview purposes. This method intentionally does nothing.
     public func deleteConnection(id: ConnectionProfile.ID) async throws {
         _ = id
     }
