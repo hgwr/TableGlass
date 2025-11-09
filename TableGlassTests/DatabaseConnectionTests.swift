@@ -47,7 +47,7 @@ final class DatabaseConnectionTests: XCTestCase {
 
         let firstRow = try XCTUnwrap(result.rows.first)
         XCTAssertEqual(firstRow[column: "value"], .int(1))
-        let expectedPrice = Decimal(string: "19.99")!
+        let expectedPrice = try XCTUnwrap(Decimal(string: "19.99"))
         XCTAssertEqual(firstRow[column: "price"], .decimal(expectedPrice))
         let recordedRequests = await connection.recordedRequests()
         XCTAssertEqual(recordedRequests, [request])
