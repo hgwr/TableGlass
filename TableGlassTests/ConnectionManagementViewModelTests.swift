@@ -63,7 +63,6 @@ struct ConnectionManagementViewModelTests {
         viewModel.updateDraft {
             $0.name = "Local SQLite"
             $0.host = "/tmp/app.db"
-            $0.username = "local"
         }
 
         #expect(viewModel.draft.isValid)
@@ -73,6 +72,7 @@ struct ConnectionManagementViewModelTests {
         let saved = await store.savedConnections()
         #expect(saved.count == 1)
         #expect(saved.first?.port == 0)
+        #expect(saved.first?.username.isEmpty == true)
     }
 
     @Test func saveNewConnectionPersistsThroughStore() async throws {
