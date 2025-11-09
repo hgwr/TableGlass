@@ -84,6 +84,11 @@ struct ConnectionManagementView: View {
             Section(header: Text("Credentials")) {
                 TextField("Username", text: draftBinding(\.username))
                 SecureField("Password", text: draftBinding(\.password))
+                if viewModel.draft.passwordKeychainIdentifier != nil && viewModel.draft.password.isEmpty {
+                    Text("Password stored securely")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                }
             }
 
             Section(header: Text("SSH Tunnel")) {

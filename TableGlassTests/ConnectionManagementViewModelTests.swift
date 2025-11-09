@@ -13,7 +13,9 @@ struct ConnectionManagementViewModelTests {
                 kind: .postgreSQL,
                 host: "localhost",
                 port: 5432,
-                username: "postgres"
+                username: "postgres",
+                sshConfiguration: .init(isEnabled: true, configAlias: "bastion", username: "sshuser"),
+                passwordKeychainIdentifier: "fixture.keychain"
             )
         ]
         let store = MockConnectionStore(connections: profiles)
@@ -25,6 +27,10 @@ struct ConnectionManagementViewModelTests {
         #expect(viewModel.selection == profiles.first?.id)
         #expect(!viewModel.isNewConnection)
         #expect(viewModel.lastError == nil)
+        #expect(viewModel.draft.useSSHTunnel)
+        #expect(viewModel.draft.sshConfigAlias == "bastion")
+        #expect(viewModel.draft.sshUsername == "sshuser")
+        #expect(viewModel.draft.passwordKeychainIdentifier == "fixture.keychain")
     }
 
     @Test func startCreatingConnectionResetsDraft() async throws {
@@ -59,15 +65,30 @@ struct ConnectionManagementViewModelTests {
             $0.host = "db.internal"
             $0.port = 3306
             $0.username = "app"
+            $0.password = "secret"
+        }
+        viewModel.updateDraft {
+            $0.passwordKeychainIdentifier = "tableglass.connection.new"
+            $0.useSSHTunnel = true
+            $0.sshConfigAlias = "bastion"
+            $0.sshUsername = "sshapp"
         }
 
         await viewModel.saveCurrentConnection()
 
         let saved = await store.savedConnections()
         #expect(saved.count == 1)
-        #expect(saved.first?.name == "New Connection")
+        guard let savedProfile = saved.first else {
+                #expect(Bool(false), "Expected saved connection to be present")
+            return
+        }
+        #expect(savedProfile.name == "New Connection")
+        #expect(savedProfile.sshConfiguration.isEnabled)
+        #expect(savedProfile.sshConfiguration.configAlias == "bastion")
+        #expect(savedProfile.sshConfiguration.username == "sshapp")
+        #expect(savedProfile.passwordKeychainIdentifier == "tableglass.connection.new")
         #expect(viewModel.connections.count == 1)
-        #expect(viewModel.selection == saved.first?.id)
+        #expect(viewModel.selection == savedProfile.id)
         #expect(!viewModel.isNewConnection)
     }
 

@@ -51,9 +51,13 @@ final class ConnectionManagementViewModel: ObservableObject {
 
     func updateDraft(_ transform: (inout ConnectionDraft) -> Void) {
         let previousKind = draft.kind
+        let previousPassword = draft.password
         transform(&draft)
         if draft.kind != previousKind {
             draft.normalizeAfterKindChange(previousKind: previousKind)
+        }
+        if draft.password != previousPassword, !draft.password.isEmpty {
+            draft.passwordKeychainIdentifier = nil
         }
     }
 
@@ -116,6 +120,7 @@ struct ConnectionDraft: Equatable {
     var port: Int
     var username: String
     var password: String
+    var passwordKeychainIdentifier: String?
     var useSSHTunnel: Bool
     var sshConfigAlias: String
     var sshUsername: String
@@ -128,6 +133,7 @@ struct ConnectionDraft: Equatable {
             port: ConnectionDraft.defaultPort(for: kind),
             username: "",
             password: "",
+            passwordKeychainIdentifier: nil,
             useSSHTunnel: false,
             sshConfigAlias: "",
             sshUsername: ""
@@ -141,6 +147,7 @@ struct ConnectionDraft: Equatable {
         port: Int,
         username: String,
         password: String,
+        passwordKeychainIdentifier: String?,
         useSSHTunnel: Bool,
         sshConfigAlias: String,
         sshUsername: String
@@ -151,6 +158,7 @@ struct ConnectionDraft: Equatable {
         self.port = port
         self.username = username
         self.password = password
+        self.passwordKeychainIdentifier = passwordKeychainIdentifier
         self.useSSHTunnel = useSSHTunnel
         self.sshConfigAlias = sshConfigAlias
         self.sshUsername = sshUsername
@@ -164,9 +172,10 @@ struct ConnectionDraft: Equatable {
             port: connection.port,
             username: connection.username,
             password: "",
-            useSSHTunnel: false,
-            sshConfigAlias: "",
-            sshUsername: ""
+            passwordKeychainIdentifier: connection.passwordKeychainIdentifier,
+            useSSHTunnel: connection.sshConfiguration.isEnabled,
+            sshConfigAlias: connection.sshConfiguration.configAlias,
+            sshUsername: connection.sshConfiguration.username
         )
     }
 
@@ -184,7 +193,13 @@ struct ConnectionDraft: Equatable {
             kind: kind,
             host: host,
             port: port,
-            username: username
+            username: username,
+            sshConfiguration: ConnectionProfile.SSHConfiguration(
+                isEnabled: useSSHTunnel,
+                configAlias: sshConfigAlias,
+                username: sshUsername
+            ),
+            passwordKeychainIdentifier: passwordKeychainIdentifier
         )
     }
 
