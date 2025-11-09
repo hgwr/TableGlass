@@ -16,7 +16,8 @@ struct TableGlassApp: App {
     init() {
         let environment = AppEnvironment.makeDefault()
         _environment = StateObject(wrappedValue: environment)
-        _connectionListViewModel = StateObject(wrappedValue: environment.makeConnectionListViewModel())
+        _connectionListViewModel = StateObject(
+            wrappedValue: environment.makeConnectionListViewModel())
         _connectionManagementViewModel = StateObject(
             wrappedValue: environment.makeConnectionManagementViewModel()
         )
@@ -40,8 +41,8 @@ private enum SceneID: String {
     case connectionManagement
 }
 
-private extension TableGlassApp {
-    var connectionManagementWindow: some Scene {
+extension TableGlassApp {
+    fileprivate var connectionManagementWindow: some Scene {
         WindowGroup("Connection Management", id: SceneID.connectionManagement.rawValue) {
             ConnectionManagementView(viewModel: connectionManagementViewModel)
                 .environmentObject(environment)

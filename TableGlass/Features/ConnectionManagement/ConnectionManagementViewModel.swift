@@ -191,10 +191,8 @@ struct ConnectionDraft: Equatable {
     var isValid: Bool {
         let requiresNetworking = kind != .sqlite
 
-        return !Self.isBlank(name) &&
-            !Self.isBlank(host) &&
-            (!requiresNetworking || port > 0) &&
-            (kind == .sqlite || !Self.isBlank(username))
+        return !Self.isBlank(name) && !Self.isBlank(host) && (!requiresNetworking || port > 0)
+            && (kind == .sqlite || !Self.isBlank(username))
     }
 
     func makeProfile(id: ConnectionProfile.ID = ConnectionProfile.ID()) -> ConnectionProfile {

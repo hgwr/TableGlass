@@ -1,7 +1,8 @@
 import Foundation
-import Testing
-@testable import TableGlass
 import TableGlassKit
+import Testing
+
+@testable import TableGlass
 
 @MainActor
 struct ConnectionManagementViewModelTests {
@@ -14,7 +15,8 @@ struct ConnectionManagementViewModelTests {
                 host: "localhost",
                 port: 5432,
                 username: "postgres",
-                sshConfiguration: .init(isEnabled: true, configAlias: "bastion", username: "sshuser"),
+                sshConfiguration: .init(
+                    isEnabled: true, configAlias: "bastion", username: "sshuser"),
                 passwordKeychainIdentifier: "fixture.keychain"
             )
         ]
@@ -117,7 +119,7 @@ struct ConnectionManagementViewModelTests {
         let saved = await store.savedConnections()
         #expect(saved.count == 1)
         guard let savedProfile = saved.first else {
-                #expect(Bool(false), "Expected saved connection to be present")
+            #expect(Bool(false), "Expected saved connection to be present")
             return
         }
         #expect(savedProfile.name == "New Connection")

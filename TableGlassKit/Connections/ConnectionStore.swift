@@ -31,7 +31,7 @@ public struct PreviewConnectionStore: ConnectionStore {
                 host: "localhost",
                 port: 0,
                 username: ""
-            )
+            ),
         ]
     }
 

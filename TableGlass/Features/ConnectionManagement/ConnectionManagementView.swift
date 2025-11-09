@@ -1,8 +1,9 @@
-#if os(macOS)
-import AppKit
-#endif
 import SwiftUI
 import TableGlassKit
+
+#if os(macOS)
+    import AppKit
+#endif
 
 struct ConnectionManagementView: View {
     @StateObject private var viewModel: ConnectionManagementViewModel
@@ -77,8 +78,8 @@ struct ConnectionManagementView: View {
                 placeholderDetail
             }
         }
-    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-    .background(Color(nsColor: .windowBackgroundColor))
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .background(Color(nsColor: .windowBackgroundColor))
     }
 
     private var connectionDetail: some View {
@@ -105,7 +106,9 @@ struct ConnectionManagementView: View {
             Section(header: Text("Credentials")) {
                 TextField("Username", text: draftBinding(\.username))
                 SecureField("Password", text: draftBinding(\.password))
-                if viewModel.draft.passwordKeychainIdentifier != nil && viewModel.draft.password.isEmpty {
+                if viewModel.draft.passwordKeychainIdentifier != nil
+                    && viewModel.draft.password.isEmpty
+                {
                     Text("Password stored securely")
                         .font(.footnote)
                         .foregroundStyle(.secondary)
@@ -156,7 +159,9 @@ struct ConnectionManagementView: View {
                     await viewModel.saveCurrentConnection()
                 }
             } label: {
-                Label(viewModel.isNewConnection ? "Create" : "Save", systemImage: "tray.and.arrow.down")
+                Label(
+                    viewModel.isNewConnection ? "Create" : "Save",
+                    systemImage: "tray.and.arrow.down")
             }
             .disabled(!viewModel.draft.isValid || viewModel.isSaving)
         }
@@ -185,7 +190,9 @@ struct ConnectionManagementView: View {
         )
     }
 
-    private func draftBinding<Value>(_ keyPath: WritableKeyPath<ConnectionDraft, Value>) -> Binding<Value> {
+    private func draftBinding<Value>(_ keyPath: WritableKeyPath<ConnectionDraft, Value>) -> Binding<
+        Value
+    > {
         Binding(
             get: { viewModel.draft[keyPath: keyPath] },
             set: { newValue in viewModel.updateDraft { $0[keyPath: keyPath] = newValue } }
@@ -204,8 +211,8 @@ struct ConnectionManagementView: View {
     }
 }
 
-private extension ConnectionProfile.DatabaseKind {
-    var label: String {
+extension ConnectionProfile.DatabaseKind {
+    fileprivate var label: String {
         switch self {
         case .postgreSQL:
             return "PostgreSQL"
@@ -218,5 +225,6 @@ private extension ConnectionProfile.DatabaseKind {
 }
 
 #Preview("Connection Management") {
-    ConnectionManagementView(viewModel: ConnectionManagementViewModel(connectionStore: PreviewConnectionStore()))
+    ConnectionManagementView(
+        viewModel: ConnectionManagementViewModel(connectionStore: PreviewConnectionStore()))
 }
