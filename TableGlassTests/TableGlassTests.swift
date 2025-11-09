@@ -39,10 +39,12 @@ private struct StubConnectionStore: ConnectionStore {
         connections
     }
 
+    /// No-op stub for testing: does not persist the connection.
     func saveConnection(_ connection: ConnectionProfile) async throws {
         _ = connection
     }
 
+    /// No-op stub for testing: does not delete any connection.
     func deleteConnection(id: ConnectionProfile.ID) async throws {
         _ = id
     }
