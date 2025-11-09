@@ -5,13 +5,37 @@
 //  Created by Shigeru Hagiwara on 2025/11/09.
 //
 
+import Core
 import Testing
 @testable import TableGlass
 
 struct TableGlassTests {
 
-    @Test func example() async throws {
-        // Write your test here and use APIs like `#expect(...)` to check expected conditions.
+    @Test func connectionListViewModelLoadsConnections() async throws {
+        let sample = ConnectionProfile(
+            name: "Fixture",
+            kind: .postgreSQL,
+            host: "localhost",
+            port: 5432,
+            username: "postgres"
+        )
+        let store = StubConnectionStore(connections: [sample])
+        let viewModel = await MainActor.run {
+            ConnectionListViewModel(connectionStore: store)
+        }
+
+        await viewModel.loadConnections()
+
+        let loaded = await MainActor.run { viewModel.connections }
+        #expect(loaded == [sample])
     }
 
+}
+
+private struct StubConnectionStore: ConnectionStore {
+    var connections: [ConnectionProfile]
+
+    func listConnections() async throws -> [ConnectionProfile] {
+        connections
+    }
 }

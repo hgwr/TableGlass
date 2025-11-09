@@ -9,9 +9,11 @@ import SwiftUI
 
 @main
 struct TableGlassApp: App {
+    @StateObject private var environment = AppEnvironment.makeDefault()
+
     var body: some Scene {
         WindowGroup {
-            ContentView()
+            ContentView(environment: environment)
         }
     }
 }
