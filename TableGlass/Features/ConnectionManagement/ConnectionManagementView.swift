@@ -16,7 +16,7 @@ struct ConnectionManagementView: View {
                 if let id = newValue {
                     viewModel.applySelection(id: id)
                 } else {
-                    viewModel.startCreatingConnection(kind: viewModel.draft.kind)
+                    viewModel.clearSelection()
                 }
             }
         )
@@ -44,8 +44,7 @@ struct ConnectionManagementView: View {
                 .padding()
             }
         } detail: {
-            connectionDetail
-                .padding()
+            detailContent
         }
         .task {
             await viewModel.loadConnections()
@@ -57,6 +56,17 @@ struct ConnectionManagementView: View {
         } message: {
             if let message = viewModel.lastError {
                 Text(message)
+            }
+        }
+    }
+
+    private var detailContent: some View {
+        Group {
+            if viewModel.isNewConnection || viewModel.selection != nil {
+                connectionDetail
+                    .padding()
+            } else {
+                placeholderDetail
             }
         }
     }
@@ -102,6 +112,20 @@ struct ConnectionManagementView: View {
 
             footerButtons
         }
+    }
+
+    private var placeholderDetail: some View {
+        VStack(spacing: 12) {
+            Image(systemName: "rectangle.stack.person.crop")
+                .font(.system(size: 48))
+                .foregroundStyle(.secondary)
+            Text("Select a connection")
+                .font(.title3)
+            Text("Choose a connection from the list or create a new one to configure it.")
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
     private var footerButtons: some View {

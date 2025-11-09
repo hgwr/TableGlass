@@ -55,6 +55,24 @@ struct ConnectionManagementViewModelTests {
         #expect(viewModel.draft.port == 0)
     }
 
+    @Test func clearingSelectionExitsEditingMode() async throws {
+        let connection = ConnectionProfile(
+            name: "Fixture",
+            kind: .postgreSQL,
+            host: "localhost",
+            port: 5432,
+            username: "postgres"
+        )
+        let store = MockConnectionStore(connections: [connection])
+        let viewModel = ConnectionManagementViewModel(connectionStore: store)
+        await viewModel.loadConnections()
+
+        viewModel.clearSelection()
+
+        #expect(viewModel.selection == nil)
+        #expect(!viewModel.isNewConnection)
+    }
+
     @Test func sqliteDraftAllowsZeroPort() async throws {
         let store = MockConnectionStore(connections: [])
         let viewModel = ConnectionManagementViewModel(connectionStore: store)

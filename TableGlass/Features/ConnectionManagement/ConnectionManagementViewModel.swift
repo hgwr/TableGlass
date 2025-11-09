@@ -49,6 +49,11 @@ final class ConnectionManagementViewModel: ObservableObject {
         lastError = nil
     }
 
+    func clearSelection() {
+        selection = nil
+        isNewConnection = false
+    }
+
     func updateDraft(_ transform: (inout ConnectionDraft) -> Void) {
         let previousKind = draft.kind
         let previousPassword = draft.password
