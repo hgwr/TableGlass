@@ -170,11 +170,15 @@ struct ConnectionDraft: Equatable {
         )
     }
 
+    private static func isBlank(_ string: String) -> Bool {
+        string.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
     var isValid: Bool {
-        !name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty &&
-            !host.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty &&
+        !Self.isBlank(name) &&
+            !Self.isBlank(host) &&
             port > 0 &&
-            !username.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            !Self.isBlank(username)
     }
 
     func makeProfile(id: ConnectionProfile.ID = ConnectionProfile.ID()) -> ConnectionProfile {
