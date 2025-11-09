@@ -44,6 +44,11 @@ final class DatabaseConnectionTests: XCTestCase {
         let request = DatabaseQueryRequest(sql: "SELECT * FROM artists")
         let result = try await connection.execute(request)
         XCTAssertEqual(result.rows.count, 1)
+
+        let firstRow = try XCTUnwrap(result.rows.first)
+        XCTAssertEqual(firstRow[column: "value"], .int(1))
+        let expectedPrice = Decimal(string: "19.99")!
+        XCTAssertEqual(firstRow[column: "price"], .decimal(expectedPrice))
         let recordedRequests = await connection.recordedRequests()
         XCTAssertEqual(recordedRequests, [request])
 
@@ -167,7 +172,11 @@ actor MockDatabaseConnection: DatabaseConnection {
     @discardableResult
     func execute(_ request: DatabaseQueryRequest) async throws -> DatabaseQueryResult {
         requests.append(request)
-        let row = DatabaseQueryRow(values: ["value": .int(1)])
+        let price = Decimal(string: "19.99") ?? .zero
+        let row = DatabaseQueryRow(values: [
+            "value": .int(1),
+            "price": .decimal(price),
+        ])
         return DatabaseQueryResult(rows: [row], affectedRowCount: nil)
     }
 

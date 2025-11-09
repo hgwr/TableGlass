@@ -14,6 +14,7 @@ public enum DatabaseQueryValue: Sendable, Hashable {
     case null
     case bool(Bool)
     case int(Int64)
+    case decimal(Decimal)
     case double(Double)
     case string(String)
     case date(Date)
@@ -28,6 +29,8 @@ public enum DatabaseQueryValue: Sendable, Hashable {
             return value ? "true" : "false"
         case .int(let value):
             return String(value)
+        case .decimal(let value):
+            return NSDecimalNumber(decimal: value).stringValue
         case .double(let value):
             return String(value)
         case .string(let value):
