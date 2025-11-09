@@ -1,6 +1,6 @@
 import Combine
-import Core
 import Foundation
+import TableGlassKit
 
 @MainActor
 final class ConnectionListViewModel: ObservableObject {

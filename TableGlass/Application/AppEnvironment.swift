@@ -1,7 +1,7 @@
 import Combine
-import Core
 import Foundation
 import SwiftUI
+import TableGlassKit
 
 @MainActor
 final class AppEnvironment: ObservableObject {

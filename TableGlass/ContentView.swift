@@ -5,8 +5,8 @@
 //  Created by Shigeru Hagiwara on 2025/11/09.
 //
 
-import Core
 import SwiftUI
+import TableGlassKit
 
 struct ContentView: View {
     @ObservedObject private var environment: AppEnvironment

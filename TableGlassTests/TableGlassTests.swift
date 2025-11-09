@@ -5,9 +5,9 @@
 //  Created by Shigeru Hagiwara on 2025/11/09.
 //
 
-import Core
 import Testing
 @testable import TableGlass
+import TableGlassKit
 
 struct TableGlassTests {
 

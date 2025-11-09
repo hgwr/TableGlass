@@ -11,5 +11,5 @@ Designed for macOS. Built using SwiftUI. It aims to be lightweight and easy to u
 
 ## Architecture Overview
 
-- `Core`: A Swift framework that defines shared business logic and dependency contracts for database access.
-- `TableGlass`: The SwiftUI application target that builds the user interface and consumes `Core` via dependency injection.
+- `TableGlassKit`: Swift framework providing shared business logic and database abstractions.
+- `TableGlass`: SwiftUI app target that renders the UI and injects `TableGlassKit` services.
