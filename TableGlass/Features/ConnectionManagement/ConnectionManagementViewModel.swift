@@ -184,9 +184,11 @@ struct ConnectionDraft: Equatable {
     }
 
     var isValid: Bool {
-        !Self.isBlank(name) &&
+        let requiresPort = kind != .sqlite
+
+        return !Self.isBlank(name) &&
             !Self.isBlank(host) &&
-            port > 0 &&
+            (!requiresPort || port > 0) &&
             !Self.isBlank(username)
     }
 

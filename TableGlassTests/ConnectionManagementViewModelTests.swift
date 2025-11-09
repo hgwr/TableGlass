@@ -55,6 +55,26 @@ struct ConnectionManagementViewModelTests {
         #expect(viewModel.draft.port == 0)
     }
 
+    @Test func sqliteDraftAllowsZeroPort() async throws {
+        let store = MockConnectionStore(connections: [])
+        let viewModel = ConnectionManagementViewModel(connectionStore: store)
+
+        viewModel.startCreatingConnection(kind: .sqlite)
+        viewModel.updateDraft {
+            $0.name = "Local SQLite"
+            $0.host = "/tmp/app.db"
+            $0.username = "local"
+        }
+
+        #expect(viewModel.draft.isValid)
+
+        await viewModel.saveCurrentConnection()
+
+        let saved = await store.savedConnections()
+        #expect(saved.count == 1)
+        #expect(saved.first?.port == 0)
+    }
+
     @Test func saveNewConnectionPersistsThroughStore() async throws {
         let store = MockConnectionStore(connections: [])
         let viewModel = ConnectionManagementViewModel(connectionStore: store)
