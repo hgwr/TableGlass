@@ -60,7 +60,7 @@ private extension ConnectionProfile {
         case .mySQL:
             "MySQL"
         case .sqlite:
-            "Sqlite"
+            "SQLite"
         }
     }
 }
