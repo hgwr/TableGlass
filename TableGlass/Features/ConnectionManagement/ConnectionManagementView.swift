@@ -1,3 +1,6 @@
+#if os(macOS)
+import AppKit
+#endif
 import SwiftUI
 import TableGlassKit
 
@@ -63,12 +66,19 @@ struct ConnectionManagementView: View {
     private var detailContent: some View {
         Group {
             if viewModel.isNewConnection || viewModel.selection != nil {
-                connectionDetail
-                    .padding()
+                ScrollView(.vertical) {
+                    connectionDetail
+                        .frame(maxWidth: 520)
+                        .padding(.vertical, 24)
+                        .padding(.horizontal, 32)
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
             } else {
                 placeholderDetail
             }
         }
+    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+    .background(Color(nsColor: .windowBackgroundColor))
     }
 
     private var connectionDetail: some View {
@@ -112,6 +122,8 @@ struct ConnectionManagementView: View {
 
             footerButtons
         }
+        .formStyle(.grouped)
+        .scrollContentBackground(.hidden)
     }
 
     private var placeholderDetail: some View {
