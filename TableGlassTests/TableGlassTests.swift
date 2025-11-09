@@ -38,4 +38,12 @@ private struct StubConnectionStore: ConnectionStore {
     func listConnections() async throws -> [ConnectionProfile] {
         connections
     }
+
+    func saveConnection(_ connection: ConnectionProfile) async throws {
+        _ = connection
+    }
+
+    func deleteConnection(id: ConnectionProfile.ID) async throws {
+        _ = id
+    }
 }

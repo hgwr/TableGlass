@@ -27,21 +27,27 @@ struct TableGlassApp: App {
             ContentView(viewModel: connectionListViewModel)
                 .environmentObject(environment)
         }
+        .commands {
+            ConnectionManagementCommands()
+        }
+
+        connectionManagementWindow
+    }
+}
+
+private enum SceneID: String {
+    case connectionManagement
+}
+
+private extension TableGlassApp {
+    var connectionManagementWindow: some Scene {
         WindowGroup("Connection Management", id: SceneID.connectionManagement.rawValue) {
             ConnectionManagementView(viewModel: connectionManagementViewModel)
                 .environmentObject(environment)
                 .frame(minWidth: 640, minHeight: 480)
         }
         .defaultSize(width: 760, height: 520)
-
-        Commands {
-            ConnectionManagementCommands()
-        }
     }
-}
-
-private enum SceneID: String {
-    case connectionManagement
 }
 
 private struct ConnectionManagementCommands: Commands {
