@@ -2,7 +2,7 @@ import SwiftUI
 import TableGlassKit
 
 #if os(macOS)
-    import AppKit
+import AppKit
 #endif
 
 struct ConnectionManagementView: View {
@@ -224,7 +224,37 @@ extension ConnectionProfile.DatabaseKind {
     }
 }
 
-#Preview("Connection Management") {
-    ConnectionManagementView(
-        viewModel: ConnectionManagementViewModel(connectionStore: PreviewConnectionStore()))
+#if DEBUG
+private struct ConnectionManagementPreviewContainer: View {
+    let configure: @MainActor (ConnectionManagementViewModel) async -> Void
+    @StateObject private var viewModel: ConnectionManagementViewModel
+
+    init(
+        store: some ConnectionStore,
+        configure: @escaping @MainActor (ConnectionManagementViewModel) async -> Void
+    ) {
+        _viewModel = StateObject(wrappedValue: ConnectionManagementViewModel(connectionStore: store))
+        self.configure = configure
+    }
+
+    var body: some View {
+        ConnectionManagementView(viewModel: viewModel)
+            .task {
+                await configure(viewModel)
+            }
+    }
+}
+#endif
+
+#Preview("Connection Management – Populated") {
+    ConnectionManagementPreviewContainer(store: PreviewConnectionStore()) { viewModel in
+        await viewModel.loadConnections()
+    }
+}
+
+#Preview("Connection Management – Placeholder") {
+    ConnectionManagementPreviewContainer(store: PreviewConnectionStore()) { viewModel in
+        await viewModel.loadConnections()
+        viewModel.clearSelection()
+    }
 }
