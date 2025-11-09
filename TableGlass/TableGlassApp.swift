@@ -27,11 +27,12 @@ struct TableGlassApp: App {
             ContentView(viewModel: connectionListViewModel)
                 .environmentObject(environment)
         }
-        .commands {
-            ConnectionManagementCommands()
-        }
 
         connectionManagementWindow
+    }
+
+    var commands: some Commands {
+        ConnectionManagementCommands()
     }
 }
 
