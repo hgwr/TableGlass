@@ -36,7 +36,7 @@ public enum DatabaseQueryValue: Sendable, Hashable {
         case .string(let value):
             return value
         case .date(let value):
-            return ISO8601DateFormatter().string(from: value)
+            return value.formatted(.iso8601)
         case .data(let value):
             return "<data, \(value.count) bytes>"
         case .uuid(let value):
