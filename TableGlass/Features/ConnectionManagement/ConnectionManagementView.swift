@@ -17,10 +17,12 @@ struct ConnectionManagementView: View {
         Binding(
             get: { viewModel.selection },
             set: { newValue in
-                if let id = newValue {
-                    viewModel.applySelection(id: id)
-                } else {
-                    viewModel.clearSelection()
+                Task { @MainActor [viewModel] in
+                    if let id = newValue {
+                        viewModel.applySelection(id: id)
+                    } else {
+                        viewModel.clearSelection()
+                    }
                 }
             }
         )
