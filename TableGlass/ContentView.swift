@@ -9,12 +9,10 @@ import SwiftUI
 import TableGlassKit
 
 struct ContentView: View {
-    @ObservedObject private var environment: AppEnvironment
-    @StateObject private var viewModel: ConnectionListViewModel
+    @ObservedObject private var viewModel: ConnectionListViewModel
 
-    init(environment: AppEnvironment) {
-        _environment = ObservedObject(wrappedValue: environment)
-        _viewModel = StateObject(wrappedValue: environment.makeConnectionListViewModel())
+    init(viewModel: ConnectionListViewModel) {
+        _viewModel = ObservedObject(wrappedValue: viewModel)
     }
 
     var body: some View {
@@ -66,5 +64,7 @@ private extension ConnectionProfile {
 }
 
 #Preview {
-    ContentView(environment: .makePreview())
+    let environment = AppEnvironment.makePreview()
+    return ContentView(viewModel: environment.makeConnectionListViewModel())
+        .environmentObject(environment)
 }
