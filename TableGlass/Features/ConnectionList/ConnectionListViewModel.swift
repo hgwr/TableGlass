@@ -1,0 +1,24 @@
+import Combine
+import Foundation
+import TableGlassKit
+
+@MainActor
+final class ConnectionListViewModel: ObservableObject {
+    @Published private(set) var connections: [ConnectionProfile] = []
+
+    private let connectionStore: any ConnectionStore
+
+    init(connectionStore: some ConnectionStore) {
+        self.connectionStore = connectionStore
+    }
+
+    func loadConnections() async {
+        do {
+            let profiles = try await connectionStore.listConnections()
+            connections = profiles
+        } catch {
+            // TODO: Expose this error to the UI to show an alert.
+            connections = []
+        }
+    }
+}

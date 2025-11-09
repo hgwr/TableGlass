@@ -9,9 +9,19 @@ import SwiftUI
 
 @main
 struct TableGlassApp: App {
+    @StateObject private var environment: AppEnvironment
+    @StateObject private var connectionListViewModel: ConnectionListViewModel
+
+    init() {
+        let environment = AppEnvironment.makeDefault()
+        _environment = StateObject(wrappedValue: environment)
+        _connectionListViewModel = StateObject(wrappedValue: environment.makeConnectionListViewModel())
+    }
+
     var body: some Scene {
         WindowGroup {
-            ContentView()
+            ContentView(viewModel: connectionListViewModel)
+                .environmentObject(environment)
         }
     }
 }
