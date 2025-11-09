@@ -17,6 +17,7 @@ final class ConnectionListViewModel: ObservableObject {
             let profiles = try await connectionStore.listConnections()
             connections = profiles
         } catch {
+            // TODO: Expose this error to the UI to show an alert.
             connections = []
         }
     }
