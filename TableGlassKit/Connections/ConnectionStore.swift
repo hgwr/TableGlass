@@ -2,6 +2,8 @@ import Foundation
 
 public protocol ConnectionStore: Sendable {
     func listConnections() async throws -> [ConnectionProfile]
+    func saveConnection(_ connection: ConnectionProfile) async throws
+    func deleteConnection(id: ConnectionProfile.ID) async throws
 }
 
 public struct PreviewConnectionStore: ConnectionStore {
@@ -32,10 +34,26 @@ public struct PreviewConnectionStore: ConnectionStore {
             )
         ]
     }
+
+    public func saveConnection(_ connection: ConnectionProfile) async throws {
+        _ = connection
+    }
+
+    public func deleteConnection(id: ConnectionProfile.ID) async throws {
+        _ = id
+    }
 }
 
 public struct EmptyConnectionStore: ConnectionStore {
     public init() {}
 
     public func listConnections() async throws -> [ConnectionProfile] { [] }
+
+    public func saveConnection(_ connection: ConnectionProfile) async throws {
+        _ = connection
+    }
+
+    public func deleteConnection(id: ConnectionProfile.ID) async throws {
+        _ = id
+    }
 }
