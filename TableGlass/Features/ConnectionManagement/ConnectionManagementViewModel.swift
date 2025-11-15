@@ -520,7 +520,9 @@ struct ConnectionDraft: Equatable {
 
             switch sshAuthenticationMethod {
             case .keyFile:
-                if Self.isBlank(sshUsername) || sshKeychainIdentityReference == nil {
+                let hasKeychainIdentity = sshKeychainIdentityReference != nil
+                let hasKeyFile = !Self.isBlank(sshKeyFilePath)
+                if Self.isBlank(sshUsername) || (!hasKeychainIdentity && !hasKeyFile) {
                     return false
                 }
             case .usernameAndPassword:
