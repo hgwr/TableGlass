@@ -16,21 +16,26 @@ final class ConnectionManagementViewModel: ObservableObject {
     @Published private(set) var availableSSHIdentities: [SSHKeychainIdentityReference] = []
     @Published private(set) var isLoadingSSHIdentities: Bool = false
     @Published private(set) var sshIdentityError: String?
+    @Published private(set) var isSSHAgentReachable: Bool = false
 
     private let connectionStore: any ConnectionStore
     private let sshAliasProvider: any SSHConfigAliasProvider
     private let sshKeychainService: any SSHKeychainService
+    private let sshAgentService: any SSHAgentService
     private var hasLoadedSSHAliases = false
     private var hasLoadedSSHIdentities = false
 
     init(
         connectionStore: some ConnectionStore,
         sshAliasProvider: some SSHConfigAliasProvider = DefaultSSHConfigAliasProvider(),
-        sshKeychainService: some SSHKeychainService = DefaultSSHKeychainService()
+        sshKeychainService: some SSHKeychainService = DefaultSSHKeychainService(),
+        sshAgentService: some SSHAgentService = DefaultSSHAgentService()
     ) {
         self.connectionStore = connectionStore
         self.sshAliasProvider = sshAliasProvider
         self.sshKeychainService = sshKeychainService
+        self.sshAgentService = sshAgentService
+        self.isSSHAgentReachable = sshAgentService.isAgentReachable()
     }
 
     var sshAliasOptions: [String] {
@@ -155,6 +160,11 @@ final class ConnectionManagementViewModel: ObservableObject {
             return
         }
 
+        guard draft.sshAuthenticationMethod == .keyFile else {
+            sshIdentityError = nil
+            return
+        }
+
         guard let label = draft.sshKeychainIdentityLabel, !label.isEmpty else {
             sshIdentityError = nil
             return
@@ -177,7 +187,12 @@ final class ConnectionManagementViewModel: ObservableObject {
     private func resetDraftSSHIdentity() {
         draft.sshKeychainIdentityLabel = nil
         draft.sshKeychainIdentityReference = nil
+        draft.sshKeyFilePath = ""
         sshIdentityError = nil
+    }
+
+    private func refreshSSHAgentStatus() {
+        isSSHAgentReachable = sshAgentService.isAgentReachable()
     }
 
     private func handleSSHTunnelMutation(
@@ -188,6 +203,9 @@ final class ConnectionManagementViewModel: ObservableObject {
     ) {
         if !newUseSSH {
             resetDraftSSHIdentity()
+            draft.sshAuthenticationMethod = .keyFile
+            draft.sshPassword = ""
+            draft.sshPasswordKeychainIdentifier = nil
             return
         }
 
@@ -195,13 +213,50 @@ final class ConnectionManagementViewModel: ObservableObject {
             Task { @MainActor [weak self] in
                 guard let self else { return }
                 await self.ensureSSHAliasesLoaded()
-                await self.ensureSSHIdentitiesLoaded()
+                if self.draft.sshAuthenticationMethod == .keyFile {
+                    await self.ensureSSHIdentitiesLoaded()
+                }
             }
         } else if previousAlias != newAlias {
             includeAliasInList(newAlias)
             synchronizeDraftIdentity()
         } else {
             synchronizeDraftIdentity()
+        }
+
+        if draft.sshAuthenticationMethod == .sshAgent {
+            refreshSSHAgentStatus()
+        }
+    }
+
+    private func handleSSHAuthenticationMethodChange(
+        previous: ConnectionProfile.SSHConfiguration.AuthenticationMethod,
+        current: ConnectionProfile.SSHConfiguration.AuthenticationMethod
+    ) {
+        if current != .keyFile {
+            resetDraftSSHIdentity()
+        } else if draft.useSSHTunnel {
+            Task { @MainActor [weak self] in
+                guard let self else { return }
+                await self.ensureSSHIdentitiesLoaded()
+            }
+        }
+
+        if current != .usernameAndPassword {
+            draft.sshPassword = ""
+            draft.sshPasswordKeychainIdentifier = nil
+        }
+
+        if current != .keyFile {
+            draft.sshKeyFilePath = ""
+        }
+
+        if current == .sshAgent, draft.useSSHTunnel {
+            refreshSSHAgentStatus()
+        }
+
+        if previous == .sshAgent, current != .sshAgent {
+            isSSHAgentReachable = sshAgentService.isAgentReachable()
         }
     }
 
@@ -215,11 +270,16 @@ final class ConnectionManagementViewModel: ObservableObject {
             includeAliasInList(draft.sshConfigAlias)
         }
         if draft.useSSHTunnel {
-            Task { @MainActor [weak self] in
-                guard let self else { return }
-                await self.ensureSSHIdentitiesLoaded()
+            if draft.sshAuthenticationMethod == .keyFile {
+                Task { @MainActor [weak self] in
+                    guard let self else { return }
+                    await self.ensureSSHIdentitiesLoaded()
+                }
             }
             synchronizeDraftIdentity()
+            if draft.sshAuthenticationMethod == .sshAgent {
+                refreshSSHAgentStatus()
+            }
         } else {
             resetDraftSSHIdentity()
         }
@@ -233,12 +293,14 @@ final class ConnectionManagementViewModel: ObservableObject {
         isNewConnection = true
         lastError = nil
         resetDraftSSHIdentity()
+        refreshSSHAgentStatus()
     }
 
     func clearSelection() {
         selection = nil
         isNewConnection = false
         resetDraftSSHIdentity()
+        refreshSSHAgentStatus()
     }
 
     func updateDraft(_ transform: (inout ConnectionDraft) -> Void) {
@@ -246,12 +308,17 @@ final class ConnectionManagementViewModel: ObservableObject {
         let previousPassword = draft.password
         let previousUseSSH = draft.useSSHTunnel
         let previousAlias = draft.sshConfigAlias
+        let previousSSHPassword = draft.sshPassword
+        let previousAuthenticationMethod = draft.sshAuthenticationMethod
         transform(&draft)
         if draft.kind != previousKind {
             draft.normalizeAfterKindChange(previousKind: previousKind)
         }
         if draft.password != previousPassword, !draft.password.isEmpty {
             draft.passwordKeychainIdentifier = nil
+        }
+        if draft.sshPassword != previousSSHPassword, !draft.sshPassword.isEmpty {
+            draft.sshPasswordKeychainIdentifier = nil
         }
         if !draft.sshConfigAlias.isEmpty {
             includeAliasInList(draft.sshConfigAlias)
@@ -263,10 +330,24 @@ final class ConnectionManagementViewModel: ObservableObject {
             newUseSSH: draft.useSSHTunnel,
             newAlias: draft.sshConfigAlias
         )
+
+        if draft.sshAuthenticationMethod != previousAuthenticationMethod {
+            handleSSHAuthenticationMethodChange(
+                previous: previousAuthenticationMethod,
+                current: draft.sshAuthenticationMethod
+            )
+        } else if draft.sshAuthenticationMethod == .sshAgent, draft.useSSHTunnel {
+            refreshSSHAgentStatus()
+        }
     }
 
     func selectSSHIdentity(_ identity: SSHKeychainIdentityReference?) {
         updateDraft { draft in
+            guard draft.sshAuthenticationMethod == .keyFile else {
+                draft.sshKeychainIdentityLabel = nil
+                draft.sshKeychainIdentityReference = nil
+                return
+            }
             if let identity {
                 draft.sshKeychainIdentityLabel = identity.label
                 draft.sshKeychainIdentityReference = identity.persistentReference
@@ -340,6 +421,10 @@ struct ConnectionDraft: Equatable {
     var useSSHTunnel: Bool
     var sshConfigAlias: String
     var sshUsername: String
+    var sshAuthenticationMethod: ConnectionProfile.SSHConfiguration.AuthenticationMethod
+    var sshKeyFilePath: String
+    var sshPassword: String
+    var sshPasswordKeychainIdentifier: String?
     var sshKeychainIdentityLabel: String?
     var sshKeychainIdentityReference: Data?
 
@@ -355,6 +440,10 @@ struct ConnectionDraft: Equatable {
             useSSHTunnel: false,
             sshConfigAlias: "",
             sshUsername: "",
+            sshAuthenticationMethod: .keyFile,
+            sshKeyFilePath: "",
+            sshPassword: "",
+            sshPasswordKeychainIdentifier: nil,
             sshKeychainIdentityLabel: nil,
             sshKeychainIdentityReference: nil
         )
@@ -371,6 +460,10 @@ struct ConnectionDraft: Equatable {
         useSSHTunnel: Bool,
         sshConfigAlias: String,
         sshUsername: String,
+        sshAuthenticationMethod: ConnectionProfile.SSHConfiguration.AuthenticationMethod,
+        sshKeyFilePath: String,
+        sshPassword: String,
+        sshPasswordKeychainIdentifier: String?,
         sshKeychainIdentityLabel: String?,
         sshKeychainIdentityReference: Data?
     ) {
@@ -384,6 +477,10 @@ struct ConnectionDraft: Equatable {
         self.useSSHTunnel = useSSHTunnel
         self.sshConfigAlias = sshConfigAlias
         self.sshUsername = sshUsername
+        self.sshAuthenticationMethod = sshAuthenticationMethod
+        self.sshKeyFilePath = sshKeyFilePath
+        self.sshPassword = sshPassword
+        self.sshPasswordKeychainIdentifier = sshPasswordKeychainIdentifier
         self.sshKeychainIdentityLabel = sshKeychainIdentityLabel
         self.sshKeychainIdentityReference = sshKeychainIdentityReference
     }
@@ -400,6 +497,10 @@ struct ConnectionDraft: Equatable {
             useSSHTunnel: connection.sshConfiguration.isEnabled,
             sshConfigAlias: connection.sshConfiguration.configAlias,
             sshUsername: connection.sshConfiguration.username,
+            sshAuthenticationMethod: connection.sshConfiguration.authenticationMethod,
+            sshKeyFilePath: connection.sshConfiguration.keyFilePath,
+            sshPassword: "",
+            sshPasswordKeychainIdentifier: connection.sshConfiguration.passwordKeychainIdentifier,
             sshKeychainIdentityLabel: connection.sshConfiguration.keychainIdentityLabel,
             sshKeychainIdentityReference: connection.sshConfiguration.keychainIdentityReference
         )
@@ -413,10 +514,28 @@ struct ConnectionDraft: Equatable {
         let requiresNetworking = kind != .sqlite
 
         if useSSHTunnel {
-            if Self.isBlank(sshConfigAlias) || Self.isBlank(sshUsername)
-                || sshKeychainIdentityReference == nil
-            {
+            if Self.isBlank(sshConfigAlias) {
                 return false
+            }
+
+            switch sshAuthenticationMethod {
+            case .keyFile:
+                if Self.isBlank(sshUsername) || sshKeychainIdentityReference == nil {
+                    return false
+                }
+            case .usernameAndPassword:
+                if Self.isBlank(sshUsername) {
+                    return false
+                }
+                let hasPasswordReference = sshPasswordKeychainIdentifier != nil
+                let hasInlinePassword = !Self.isBlank(sshPassword)
+                if !hasPasswordReference && !hasInlinePassword {
+                    return false
+                }
+            case .sshAgent:
+                if Self.isBlank(sshUsername) {
+                    return false
+                }
             }
         }
 
@@ -436,8 +555,11 @@ struct ConnectionDraft: Equatable {
                 isEnabled: useSSHTunnel,
                 configAlias: sshConfigAlias,
                 username: sshUsername,
+                authenticationMethod: sshAuthenticationMethod,
                 keychainIdentityLabel: sshKeychainIdentityLabel,
-                keychainIdentityReference: sshKeychainIdentityReference
+                keychainIdentityReference: sshKeychainIdentityReference,
+                keyFilePath: sshKeyFilePath,
+                passwordKeychainIdentifier: sshPasswordKeychainIdentifier
             ),
             passwordKeychainIdentifier: passwordKeychainIdentifier
         )

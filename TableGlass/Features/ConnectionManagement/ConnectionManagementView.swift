@@ -1,6 +1,7 @@
 import Foundation
 import SwiftUI
 import TableGlassKit
+import UniformTypeIdentifiers
 
 #if os(macOS)
 import AppKit
@@ -9,6 +10,7 @@ import AppKit
 struct ConnectionManagementView: View {
     @StateObject private var viewModel: ConnectionManagementViewModel
     @State private var isDeleteConfirmationPresented = false
+    @State private var isSSHKeyFileImporterPresented = false
 
     init(viewModel: ConnectionManagementViewModel) {
         _viewModel = StateObject(wrappedValue: viewModel)
@@ -122,8 +124,17 @@ struct ConnectionManagementView: View {
                 Toggle("Use SSH", isOn: draftBinding(\.useSSHTunnel))
                 if viewModel.draft.useSSHTunnel {
                     sshAliasRow
-                    sshIdentityRow
+                    sshAuthenticationPicker
                     TextField("SSH User", text: draftBinding(\.sshUsername))
+                    switch viewModel.draft.sshAuthenticationMethod {
+                    case .keyFile:
+                        sshIdentityRow
+                        sshKeyFileRow
+                    case .usernameAndPassword:
+                        sshPasswordRow
+                    case .sshAgent:
+                        sshAgentStatusView
+                    }
                 }
             }
 
@@ -131,6 +142,16 @@ struct ConnectionManagementView: View {
         }
         .formStyle(.grouped)
         .scrollContentBackground(.hidden)
+        .fileImporter(
+            isPresented: $isSSHKeyFileImporterPresented,
+            allowedContentTypes: [.item],
+            allowsMultipleSelection: false
+        ) { result in
+            guard case let .success(urls) = result, let url = urls.first else {
+                return
+            }
+            viewModel.updateDraft { $0.sshKeyFilePath = url.path }
+        }
     }
 
     private var sshAliasRow: some View {
@@ -182,6 +203,15 @@ struct ConnectionManagementView: View {
                     .foregroundStyle(.secondary)
             }
         }
+    }
+
+    private var sshAuthenticationPicker: some View {
+        Picker("SSH Authentication", selection: draftBinding(\.sshAuthenticationMethod)) {
+            ForEach(ConnectionProfile.SSHConfiguration.AuthenticationMethod.allCases, id: \.self) { method in
+                Text(title(for: method)).tag(method)
+            }
+        }
+        .pickerStyle(.menu)
     }
 
     private var sshIdentityRow: some View {
@@ -246,6 +276,48 @@ struct ConnectionManagementView: View {
                     .foregroundStyle(.secondary)
             }
         }
+    }
+
+    private var sshKeyFileRow: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(alignment: .firstTextBaseline, spacing: 8) {
+                TextField("Key File Path", text: draftBinding(\.sshKeyFilePath))
+                Button {
+                    isSSHKeyFileImporterPresented = true
+                } label: {
+                    Label("Browse", systemImage: "folder")
+                        .labelStyle(.iconOnly)
+                }
+                .help("Choose a private key file")
+            }
+
+            Text("TableGlass stores only secure references to your SSH keys via the macOS Keychain.")
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+        }
+    }
+
+    private var sshPasswordRow: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            SecureField("SSH Password", text: draftBinding(\.sshPassword))
+            if viewModel.draft.sshPasswordKeychainIdentifier != nil
+                && viewModel.draft.sshPassword.isEmpty
+            {
+                Text("Password stored securely")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+            }
+        }
+    }
+
+    private var sshAgentStatusView: some View {
+        Text(
+            viewModel.isSSHAgentReachable
+                ? "We found your SSH Agent. You're good to go!"
+                : "SSH Agent is not accessible. Start an agent or ensure TableGlass can reach it."
+        )
+        .font(.footnote)
+        .foregroundStyle(viewModel.isSSHAgentReachable ? Color.green : Color.secondary)
     }
 
     private var placeholderDetail: some View {
@@ -336,6 +408,17 @@ struct ConnectionManagementView: View {
             return label
         }
         return "Select Keychain Identity"
+    }
+
+    private func title(for method: ConnectionProfile.SSHConfiguration.AuthenticationMethod) -> String {
+        switch method {
+        case .keyFile:
+            return "Key File"
+        case .usernameAndPassword:
+            return "Username & Password"
+        case .sshAgent:
+            return "SSH Agent"
+        }
     }
 }
 
