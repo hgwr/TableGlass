@@ -25,6 +25,7 @@ public struct NoopSSHTunnelManager: SSHTunnelManager {
     }
 
     public func closeTunnel(_ handle: SSHTunnelHandle) async {
+        // No-op implementation for testing/stubbing; intentionally discards the parameter.
         _ = handle
     }
 }
