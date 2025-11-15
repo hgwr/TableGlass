@@ -1,3 +1,4 @@
+import Foundation
 import SwiftUI
 import TableGlassKit
 
@@ -120,8 +121,9 @@ struct ConnectionManagementView: View {
             Section(header: Text("SSH Tunnel")) {
                 Toggle("Use SSH", isOn: draftBinding(\.useSSHTunnel))
                 if viewModel.draft.useSSHTunnel {
-                    TextField("SSH Config Alias", text: draftBinding(\.sshConfigAlias))
+                    sshAliasRow
                     TextField("SSH User", text: draftBinding(\.sshUsername))
+                    sshIdentityStatus
                 }
             }
 
@@ -129,6 +131,80 @@ struct ConnectionManagementView: View {
         }
         .formStyle(.grouped)
         .scrollContentBackground(.hidden)
+    }
+
+    private var sshAliasRow: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(alignment: .firstTextBaseline, spacing: 8) {
+                TextField("SSH Config Alias", text: draftBinding(\.sshConfigAlias))
+                Menu {
+                    if viewModel.sshAliasOptions.isEmpty {
+                        Button("No aliases available") {}
+                            .disabled(true)
+                    } else {
+                        ForEach(viewModel.sshAliasOptions, id: \.self) { alias in
+                            Button(alias) {
+                                viewModel.updateDraft { $0.sshConfigAlias = alias }
+                            }
+                        }
+                    }
+                } label: {
+                    Label("Aliases", systemImage: "list.bullet")
+                        .labelStyle(.iconOnly)
+                        .frame(width: 28, height: 24)
+                }
+                .disabled(viewModel.sshAliasOptions.isEmpty)
+                .help("Choose an alias parsed from ~/.ssh/config")
+
+                Button {
+                    Task {
+                        await viewModel.reloadSSHAliases()
+                    }
+                } label: {
+                    Label("Reload", systemImage: "arrow.clockwise")
+                        .labelStyle(.iconOnly)
+                }
+                .buttonStyle(.borderless)
+                .help("Reload aliases from ~/.ssh/config")
+                .disabled(viewModel.isLoadingSSHAliases)
+            }
+
+            if viewModel.isLoadingSSHAliases {
+                ProgressView("Loading aliases…")
+                    .controlSize(.small)
+            } else if let error = viewModel.sshAliasError {
+                Text(error)
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+            } else if viewModel.sshAliasOptions.isEmpty {
+                Text("No host aliases found in ~/.ssh/config.")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var sshIdentityStatus: some View {
+        switch viewModel.sshIdentityState {
+        case .idle:
+            EmptyView()
+        case .loading:
+            ProgressView("Resolving Keychain identity…")
+                .controlSize(.small)
+        case .resolved(let label):
+            Text("Keychain identity: \(label)")
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+        case .missing:
+            Text("No matching Keychain identity found in the Keychain.")
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+        case .failed(let message):
+            Text("Keychain lookup failed: \(message)")
+                .font(.footnote)
+                .foregroundColor(.red)
+        }
     }
 
     private var placeholderDetail: some View {
@@ -235,7 +311,13 @@ private struct ConnectionManagementPreviewContainer: View {
         store: some ConnectionStore,
         configure: @escaping @MainActor (ConnectionManagementViewModel) async -> Void
     ) {
-        _viewModel = StateObject(wrappedValue: ConnectionManagementViewModel(connectionStore: store))
+        _viewModel = StateObject(
+            wrappedValue: ConnectionManagementViewModel(
+                connectionStore: store,
+                sshAliasProvider: PreviewSSHAliasProvider(),
+                sshKeychainService: PreviewSSHKeychainService()
+            )
+        )
         self.configure = configure
     }
 
@@ -244,6 +326,18 @@ private struct ConnectionManagementPreviewContainer: View {
             .task {
                 await configure(viewModel)
             }
+    }
+}
+
+private struct PreviewSSHAliasProvider: SSHConfigAliasProvider {
+    func availableAliases() async throws -> [String] {
+        ["bastion", "staging", "analytics"]
+    }
+}
+
+private struct PreviewSSHKeychainService: SSHKeychainService {
+    func identity(forLabel label: String) async throws -> SSHKeychainIdentityReference? {
+        SSHKeychainIdentityReference(label: label, persistentReference: Data())
     }
 }
 #endif

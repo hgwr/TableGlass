@@ -25,6 +25,10 @@ final class AppEnvironment: ObservableObject {
     }
 
     func makeConnectionManagementViewModel() -> ConnectionManagementViewModel {
-        ConnectionManagementViewModel(connectionStore: dependencies.connectionStore)
+        ConnectionManagementViewModel(
+            connectionStore: dependencies.connectionStore,
+            sshAliasProvider: dependencies.sshAliasProvider,
+            sshKeychainService: dependencies.sshKeychainService
+        )
     }
 }

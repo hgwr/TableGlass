@@ -21,7 +21,11 @@ struct ConnectionManagementViewModelTests {
             )
         ]
         let store = MockConnectionStore(connections: profiles)
-        let viewModel = ConnectionManagementViewModel(connectionStore: store)
+        let viewModel = makeViewModel(
+            store: store,
+            aliases: ["bastion"],
+            keychainResult: .none
+        )
 
         await viewModel.loadConnections()
 
@@ -46,7 +50,7 @@ struct ConnectionManagementViewModelTests {
             )
         ]
         let store = MockConnectionStore(connections: profiles)
-        let viewModel = ConnectionManagementViewModel(connectionStore: store)
+        let viewModel = makeViewModel(store: store)
         await viewModel.loadConnections()
 
         viewModel.startCreatingConnection(kind: .sqlite)
@@ -66,7 +70,7 @@ struct ConnectionManagementViewModelTests {
             username: "postgres"
         )
         let store = MockConnectionStore(connections: [connection])
-        let viewModel = ConnectionManagementViewModel(connectionStore: store)
+        let viewModel = makeViewModel(store: store)
         await viewModel.loadConnections()
 
         viewModel.clearSelection()
@@ -77,7 +81,7 @@ struct ConnectionManagementViewModelTests {
 
     @Test func sqliteDraftAllowsZeroPort() async throws {
         let store = MockConnectionStore(connections: [])
-        let viewModel = ConnectionManagementViewModel(connectionStore: store)
+        let viewModel = makeViewModel(store: store)
 
         viewModel.startCreatingConnection(kind: .sqlite)
         viewModel.updateDraft {
@@ -97,7 +101,11 @@ struct ConnectionManagementViewModelTests {
 
     @Test func saveNewConnectionPersistsThroughStore() async throws {
         let store = MockConnectionStore(connections: [])
-        let viewModel = ConnectionManagementViewModel(connectionStore: store)
+        let viewModel = makeViewModel(
+            store: store,
+            aliases: ["bastion"],
+            keychainResult: .none
+        )
 
         viewModel.startCreatingConnection(kind: .mySQL)
         viewModel.updateDraft {
@@ -148,7 +156,7 @@ struct ConnectionManagementViewModelTests {
             username: "postgres"
         )
         let store = MockConnectionStore(connections: [connectionA, connectionB])
-        let viewModel = ConnectionManagementViewModel(connectionStore: store)
+        let viewModel = makeViewModel(store: store)
         await viewModel.loadConnections()
         viewModel.applySelection(id: connectionA.id)
 
@@ -158,6 +166,78 @@ struct ConnectionManagementViewModelTests {
         #expect(deleted == [connectionA.id])
         #expect(viewModel.connections == [connectionB])
         #expect(viewModel.selection == connectionB.id)
+    }
+
+    @Test func enablingSSHTunnelResolvesKeychainIdentity() async throws {
+        let store = MockConnectionStore()
+        let identityReference = Data([0x01, 0x02, 0x03])
+        let viewModel = makeViewModel(
+            store: store,
+            aliases: ["bastion"],
+            keychainResult: .found(label: "bastion-key", reference: identityReference)
+        )
+
+        viewModel.startCreatingConnection(kind: .postgreSQL)
+        viewModel.updateDraft {
+            $0.name = "Keychain Test"
+            $0.host = "db.internal"
+            $0.port = 5432
+            $0.username = "dbuser"
+        }
+
+        await viewModel.reloadSSHAliases()
+        viewModel.updateDraft {
+            $0.useSSHTunnel = true
+            $0.sshConfigAlias = "bastion"
+            $0.sshUsername = "sshuser"
+        }
+
+        try await Task.sleep(nanoseconds: 50_000_000)
+
+        #expect(viewModel.sshAliases.contains("bastion"))
+        #expect(viewModel.sshIdentityState == .resolved(label: "bastion-key"))
+        #expect(viewModel.draft.sshKeychainIdentityReference == identityReference)
+    }
+
+    @Test func missingKeychainIdentityUpdatesState() async throws {
+        let store = MockConnectionStore()
+        let viewModel = makeViewModel(
+            store: store,
+            aliases: ["bastion"],
+            keychainResult: .none
+        )
+
+        viewModel.startCreatingConnection(kind: .postgreSQL)
+        viewModel.updateDraft {
+            $0.name = "Missing Identity"
+            $0.host = "db.internal"
+            $0.port = 5432
+            $0.username = "dbuser"
+        }
+
+        await viewModel.reloadSSHAliases()
+        viewModel.updateDraft {
+            $0.useSSHTunnel = true
+            $0.sshConfigAlias = "bastion"
+            $0.sshUsername = "sshuser"
+        }
+
+        try await Task.sleep(nanoseconds: 50_000_000)
+
+        #expect(viewModel.sshIdentityState == .missing)
+        #expect(viewModel.draft.sshKeychainIdentityReference == nil)
+    }
+
+    private func makeViewModel(
+        store: MockConnectionStore,
+        aliases: [String] = [],
+        keychainResult: MockSSHKeychainService.Result = .none
+    ) -> ConnectionManagementViewModel {
+        ConnectionManagementViewModel(
+            connectionStore: store,
+            sshAliasProvider: MockSSHAliasProvider(aliases: aliases),
+            sshKeychainService: MockSSHKeychainService(result: keychainResult)
+        )
     }
 }
 
@@ -195,4 +275,37 @@ actor MockConnectionStore: ConnectionStore {
     func deletedIDs() -> [ConnectionProfile.ID] {
         deleted
     }
+}
+
+struct MockSSHAliasProvider: SSHConfigAliasProvider, Sendable {
+    let aliases: [String]
+
+    func availableAliases() async throws -> [String] {
+        aliases
+    }
+}
+
+struct MockSSHKeychainService: SSHKeychainService, Sendable {
+    enum Result: Sendable {
+        case none
+        case found(label: String, reference: Data)
+        case failure(MockSSHKeychainServiceError)
+    }
+
+    var result: Result
+
+    func identity(forLabel label: String) async throws -> SSHKeychainIdentityReference? {
+        switch result {
+        case .none:
+            return nil
+        case .found(let label, let reference):
+            return SSHKeychainIdentityReference(label: label, persistentReference: reference)
+        case .failure(let error):
+            throw error
+        }
+    }
+}
+
+enum MockSSHKeychainServiceError: Error, Sendable {
+    case lookup
 }

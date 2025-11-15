@@ -11,11 +11,21 @@ public struct ConnectionProfile: Identifiable, Hashable, Sendable {
         public var isEnabled: Bool
         public var configAlias: String
         public var username: String
+        public var keychainIdentityLabel: String?
+        public var keychainIdentityReference: Data?
 
-        public init(isEnabled: Bool = false, configAlias: String = "", username: String = "") {
+        public init(
+            isEnabled: Bool = false,
+            configAlias: String = "",
+            username: String = "",
+            keychainIdentityLabel: String? = nil,
+            keychainIdentityReference: Data? = nil
+        ) {
             self.isEnabled = isEnabled
             self.configAlias = configAlias
             self.username = username
+            self.keychainIdentityLabel = keychainIdentityLabel
+            self.keychainIdentityReference = keychainIdentityReference
         }
     }
 
