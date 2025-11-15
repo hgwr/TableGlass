@@ -8,24 +8,39 @@ public struct ConnectionProfile: Identifiable, Hashable, Sendable {
     }
 
     public struct SSHConfiguration: Hashable, Sendable {
+        public enum AuthenticationMethod: String, CaseIterable, Sendable {
+            case keyFile
+            case usernameAndPassword
+            case sshAgent
+        }
+
         public var isEnabled: Bool
         public var configAlias: String
         public var username: String
+        public var authenticationMethod: AuthenticationMethod
         public var keychainIdentityLabel: String?
         public var keychainIdentityReference: Data?
+        public var keyFilePath: String
+        public var passwordKeychainIdentifier: String?
 
         public init(
             isEnabled: Bool = false,
             configAlias: String = "",
             username: String = "",
+            authenticationMethod: AuthenticationMethod = .keyFile,
             keychainIdentityLabel: String? = nil,
-            keychainIdentityReference: Data? = nil
+            keychainIdentityReference: Data? = nil,
+            keyFilePath: String = "",
+            passwordKeychainIdentifier: String? = nil
         ) {
             self.isEnabled = isEnabled
             self.configAlias = configAlias
             self.username = username
+            self.authenticationMethod = authenticationMethod
             self.keychainIdentityLabel = keychainIdentityLabel
             self.keychainIdentityReference = keychainIdentityReference
+            self.keyFilePath = keyFilePath
+            self.passwordKeychainIdentifier = passwordKeychainIdentifier
         }
     }
 
