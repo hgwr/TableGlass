@@ -16,7 +16,9 @@ TableGlass is an open-source database management tool for macOS. Built with Swif
 - The Connection Management window allows you to add, edit, and delete database connections. Each connection can be configured with information such as the name, database type, and host. Additional settings include port, username, and password.
 - Optionally connect using an SSH tunnel.
   - Configurable from the ~/.ssh/config file.
-  - SSH key authentication is also supported.
+  - SSH key authentication is resolved through the macOS Keychain; no secrets are stored in plain text.
+  - Users choose which Keychain identity to use when enabling a tunnel; TableGlass retains only the persistent reference.
+  - Real SSH tunnels execute only under the `LocalDebug` configuration. Test and CI builds must rely on mocked SSH services.
 
 ### Database Browser Window
 
