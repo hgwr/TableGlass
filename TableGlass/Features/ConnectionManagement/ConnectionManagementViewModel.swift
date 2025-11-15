@@ -13,13 +13,15 @@ final class ConnectionManagementViewModel: ObservableObject {
     @Published private(set) var sshAliases: [String] = []
     @Published private(set) var isLoadingSSHAliases: Bool = false
     @Published private(set) var sshAliasError: String?
-    @Published private(set) var sshIdentityState: SSHIdentityState = .idle
+    @Published private(set) var availableSSHIdentities: [SSHKeychainIdentityReference] = []
+    @Published private(set) var isLoadingSSHIdentities: Bool = false
+    @Published private(set) var sshIdentityError: String?
 
     private let connectionStore: any ConnectionStore
     private let sshAliasProvider: any SSHConfigAliasProvider
     private let sshKeychainService: any SSHKeychainService
     private var hasLoadedSSHAliases = false
-    private var identityLookupTask: Task<Void, Never>?
+    private var hasLoadedSSHIdentities = false
 
     init(
         connectionStore: some ConnectionStore,
@@ -29,10 +31,6 @@ final class ConnectionManagementViewModel: ObservableObject {
         self.connectionStore = connectionStore
         self.sshAliasProvider = sshAliasProvider
         self.sshKeychainService = sshKeychainService
-    }
-
-    deinit {
-        identityLookupTask?.cancel()
     }
 
     var sshAliasOptions: [String] {
@@ -46,6 +44,7 @@ final class ConnectionManagementViewModel: ObservableObject {
 
     func loadConnections() async {
         await ensureSSHAliasesLoaded()
+        await ensureSSHIdentitiesLoaded()
         do {
             connections = try await connectionStore.listConnections()
             for connection in connections {
@@ -117,6 +116,70 @@ final class ConnectionManagementViewModel: ObservableObject {
         }
     }
 
+    func reloadSSHIdentities() async {
+        isLoadingSSHIdentities = true
+        defer { isLoadingSSHIdentities = false }
+
+        do {
+            let identities = try await sshKeychainService.allIdentities()
+            hasLoadedSSHIdentities = true
+            sshIdentityError = nil
+            applySSHIdentityList(identities)
+        } catch {
+            hasLoadedSSHIdentities = false
+            sshIdentityError = error.localizedDescription
+        }
+    }
+
+    private func ensureSSHIdentitiesLoaded() async {
+        if hasLoadedSSHIdentities {
+            synchronizeDraftIdentity()
+            return
+        }
+
+        await reloadSSHIdentities()
+    }
+
+    private func applySSHIdentityList(_ identities: [SSHKeychainIdentityReference]) {
+        let sorted = identities.sorted { left, right in
+            left.label.localizedCaseInsensitiveCompare(right.label) == .orderedAscending
+        }
+
+        availableSSHIdentities = sorted
+        synchronizeDraftIdentity()
+    }
+
+    private func synchronizeDraftIdentity() {
+        guard draft.useSSHTunnel else {
+            sshIdentityError = nil
+            return
+        }
+
+        guard let label = draft.sshKeychainIdentityLabel, !label.isEmpty else {
+            sshIdentityError = nil
+            return
+        }
+
+        if let identity = availableSSHIdentities.first(where: { $0.label == label }) {
+            if draft.sshKeychainIdentityReference != identity.persistentReference {
+                draft.sshKeychainIdentityReference = identity.persistentReference
+            }
+            sshIdentityError = nil
+        } else {
+            if draft.sshKeychainIdentityReference == nil {
+                sshIdentityError = "Selected Keychain identity is unavailable."
+            } else {
+                sshIdentityError = nil
+            }
+        }
+    }
+
+    private func resetDraftSSHIdentity() {
+        draft.sshKeychainIdentityLabel = nil
+        draft.sshKeychainIdentityReference = nil
+        sshIdentityError = nil
+    }
+
     private func handleSSHTunnelMutation(
         previousUseSSH: Bool,
         previousAlias: String,
@@ -124,76 +187,21 @@ final class ConnectionManagementViewModel: ObservableObject {
         newAlias: String
     ) {
         if !newUseSSH {
-            identityLookupTask?.cancel()
-            draft.sshKeychainIdentityLabel = nil
-            draft.sshKeychainIdentityReference = nil
-            sshIdentityState = .idle
-            return
-        }
-
-        let trimmedAlias = newAlias.trimmingCharacters(in: .whitespacesAndNewlines)
-
-        if trimmedAlias.isEmpty {
-            identityLookupTask?.cancel()
-            draft.sshKeychainIdentityLabel = nil
-            draft.sshKeychainIdentityReference = nil
-            sshIdentityState = .idle
+            resetDraftSSHIdentity()
             return
         }
 
         if !previousUseSSH {
             Task { @MainActor [weak self] in
-                await self?.ensureSSHAliasesLoaded()
+                guard let self else { return }
+                await self.ensureSSHAliasesLoaded()
+                await self.ensureSSHIdentitiesLoaded()
             }
-        }
-
-        if previousAlias != newAlias {
-            draft.sshKeychainIdentityLabel = nil
-            draft.sshKeychainIdentityReference = nil
-        }
-
-        if previousAlias != newAlias || !previousUseSSH {
-            lookupSSHIdentity(for: trimmedAlias)
-        }
-    }
-
-    private func lookupSSHIdentity(for alias: String) {
-        identityLookupTask?.cancel()
-
-        let trimmed = alias.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else {
-            draft.sshKeychainIdentityLabel = nil
-            draft.sshKeychainIdentityReference = nil
-            sshIdentityState = .idle
-            return
-        }
-
-        sshIdentityState = .loading
-        let service = sshKeychainService
-
-        identityLookupTask = Task(priority: .userInitiated) { [weak self] in
-            do {
-                let identity = try await service.identity(forLabel: trimmed)
-                if Task.isCancelled { return }
-                await MainActor.run {
-                    guard let self else { return }
-                    if let identity {
-                        self.draft.sshKeychainIdentityLabel = identity.label
-                        self.draft.sshKeychainIdentityReference = identity.persistentReference
-                        self.sshIdentityState = .resolved(label: identity.label)
-                    } else {
-                        self.draft.sshKeychainIdentityLabel = nil
-                        self.draft.sshKeychainIdentityReference = nil
-                        self.sshIdentityState = .missing
-                    }
-                }
-            } catch {
-                if Task.isCancelled { return }
-                await MainActor.run {
-                    guard let self else { return }
-                    self.sshIdentityState = .failed(message: error.localizedDescription)
-                }
-            }
+        } else if previousAlias != newAlias {
+            includeAliasInList(newAlias)
+            synchronizeDraftIdentity()
+        } else {
+            synchronizeDraftIdentity()
         }
     }
 
@@ -207,17 +215,13 @@ final class ConnectionManagementViewModel: ObservableObject {
             includeAliasInList(draft.sshConfigAlias)
         }
         if draft.useSSHTunnel {
-            if let label = draft.sshKeychainIdentityLabel,
-                draft.sshKeychainIdentityReference != nil
-            {
-                sshIdentityState = .resolved(label: label)
-            } else {
-                sshIdentityState = .idle
-                lookupSSHIdentity(for: draft.sshConfigAlias)
+            Task { @MainActor [weak self] in
+                guard let self else { return }
+                await self.ensureSSHIdentitiesLoaded()
             }
+            synchronizeDraftIdentity()
         } else {
-            identityLookupTask?.cancel()
-            sshIdentityState = .idle
+            resetDraftSSHIdentity()
         }
         isNewConnection = false
         lastError = nil
@@ -228,15 +232,13 @@ final class ConnectionManagementViewModel: ObservableObject {
         draft = .empty(kind: kind)
         isNewConnection = true
         lastError = nil
-        identityLookupTask?.cancel()
-        sshIdentityState = .idle
+        resetDraftSSHIdentity()
     }
 
     func clearSelection() {
         selection = nil
         isNewConnection = false
-        identityLookupTask?.cancel()
-        sshIdentityState = .idle
+        resetDraftSSHIdentity()
     }
 
     func updateDraft(_ transform: (inout ConnectionDraft) -> Void) {
@@ -261,6 +263,18 @@ final class ConnectionManagementViewModel: ObservableObject {
             newUseSSH: draft.useSSHTunnel,
             newAlias: draft.sshConfigAlias
         )
+    }
+
+    func selectSSHIdentity(_ identity: SSHKeychainIdentityReference?) {
+        updateDraft { draft in
+            if let identity {
+                draft.sshKeychainIdentityLabel = identity.label
+                draft.sshKeychainIdentityReference = identity.persistentReference
+            } else {
+                draft.sshKeychainIdentityLabel = nil
+                draft.sshKeychainIdentityReference = nil
+            }
+        }
     }
 
     func clearError() {
@@ -312,16 +326,6 @@ final class ConnectionManagementViewModel: ObservableObject {
         } catch {
             lastError = error.localizedDescription
         }
-    }
-}
-
-extension ConnectionManagementViewModel {
-    enum SSHIdentityState: Equatable {
-        case idle
-        case loading
-        case resolved(label: String)
-        case missing
-        case failed(message: String)
     }
 }
 
@@ -409,7 +413,9 @@ struct ConnectionDraft: Equatable {
         let requiresNetworking = kind != .sqlite
 
         if useSSHTunnel {
-            if Self.isBlank(sshConfigAlias) || Self.isBlank(sshUsername) {
+            if Self.isBlank(sshConfigAlias) || Self.isBlank(sshUsername)
+                || sshKeychainIdentityReference == nil
+            {
                 return false
             }
         }

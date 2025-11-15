@@ -13,6 +13,7 @@ Designed for macOS. Built using SwiftUI. It aims to be lightweight and easy to u
 
 - Enable SSH tunneling per connection from the Connection Management window.
 - Host aliases are parsed directly from `~/.ssh/config`; use standard `Host` entries without wildcards for best results.
+- Pick a Keychain identity from the SSH section when enabling tunneling; the app stores only a persistent reference, never the raw key material.
 - TableGlass never stores private keys or passwords in plain text. SSH identities are resolved through the macOS Keychain using persistent references.
 - To exercise real tunnel establishment, launch the app with the `LocalDebug` build configuration. CI and unit tests rely on mocked tunnel, Keychain, and SSH config providers to avoid touching local environments.
 - Recommended local setup:

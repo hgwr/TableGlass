@@ -122,8 +122,8 @@ struct ConnectionManagementView: View {
                 Toggle("Use SSH", isOn: draftBinding(\.useSSHTunnel))
                 if viewModel.draft.useSSHTunnel {
                     sshAliasRow
+                    sshIdentityRow
                     TextField("SSH User", text: draftBinding(\.sshUsername))
-                    sshIdentityStatus
                 }
             }
 
@@ -184,26 +184,67 @@ struct ConnectionManagementView: View {
         }
     }
 
-    @ViewBuilder
-    private var sshIdentityStatus: some View {
-        switch viewModel.sshIdentityState {
-        case .idle:
-            EmptyView()
-        case .loading:
-            ProgressView("Resolving Keychain identity…")
-                .controlSize(.small)
-        case .resolved(let label):
-            Text("Keychain identity: \(label)")
-                .font(.footnote)
-                .foregroundStyle(.secondary)
-        case .missing:
-            Text("No matching Keychain identity found in the Keychain.")
-                .font(.footnote)
-                .foregroundStyle(.secondary)
-        case .failed(let message):
-            Text("Keychain lookup failed: \(message)")
-                .font(.footnote)
-                .foregroundColor(.red)
+    private var sshIdentityRow: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(alignment: .firstTextBaseline, spacing: 8) {
+                Menu {
+                    Button("None") {
+                        viewModel.selectSSHIdentity(nil)
+                    }
+
+                    if viewModel.availableSSHIdentities.isEmpty {
+                        Button("No identities available") {}
+                            .disabled(true)
+                    } else {
+                        ForEach(viewModel.availableSSHIdentities, id: \.persistentReference) { identity in
+                            Button(identity.label) {
+                                viewModel.selectSSHIdentity(identity)
+                            }
+                        }
+                    }
+                } label: {
+                    Label(
+                        selectedIdentityLabel,
+                        systemImage: "key.fill"
+                    )
+                }
+                .menuStyle(.borderlessButton)
+                .frame(minWidth: 220, alignment: .leading)
+                .help("Choose a Keychain identity for SSH authentication")
+
+                Button {
+                    Task {
+                        await viewModel.reloadSSHIdentities()
+                    }
+                } label: {
+                    Label("Reload", systemImage: "arrow.clockwise")
+                        .labelStyle(.iconOnly)
+                }
+                .buttonStyle(.borderless)
+                .help("Reload Keychain identities")
+                .disabled(viewModel.isLoadingSSHIdentities)
+            }
+
+            if viewModel.isLoadingSSHIdentities {
+                ProgressView("Loading identities…")
+                    .controlSize(.small)
+            } else if let error = viewModel.sshIdentityError {
+                Text(error)
+                    .font(.footnote)
+                    .foregroundColor(.red)
+            } else if viewModel.availableSSHIdentities.isEmpty {
+                Text("No Keychain identities accessible. Use Keychain Access to grant TableGlass permission.")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+            } else if viewModel.draft.sshKeychainIdentityReference == nil {
+                Text("Select a Keychain identity to enable SSH tunneling.")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+            } else if let label = viewModel.draft.sshKeychainIdentityLabel {
+                Text("Using Keychain identity: \(label)")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+            }
         }
     }
 
@@ -287,6 +328,15 @@ struct ConnectionManagementView: View {
             return "externaldrive"
         }
     }
+
+    private var selectedIdentityLabel: String {
+        if let label = viewModel.draft.sshKeychainIdentityLabel,
+            !label.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        {
+            return label
+        }
+        return "Select Keychain Identity"
+    }
 }
 
 extension ConnectionProfile.DatabaseKind {
@@ -336,8 +386,21 @@ private struct PreviewSSHAliasProvider: SSHConfigAliasProvider {
 }
 
 private struct PreviewSSHKeychainService: SSHKeychainService {
+    func allIdentities() async throws -> [SSHKeychainIdentityReference] {
+        [
+            SSHKeychainIdentityReference(
+                label: "bastion-key",
+                persistentReference: Data([0x01, 0x02])
+            ),
+            SSHKeychainIdentityReference(
+                label: "analytics-key",
+                persistentReference: Data([0x03, 0x04])
+            ),
+        ]
+    }
+
     func identity(forLabel label: String) async throws -> SSHKeychainIdentityReference? {
-        SSHKeychainIdentityReference(label: label, persistentReference: Data())
+        try await allIdentities().first { $0.label == label }
     }
 }
 #endif

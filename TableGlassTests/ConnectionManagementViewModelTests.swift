@@ -23,8 +23,7 @@ struct ConnectionManagementViewModelTests {
         let store = MockConnectionStore(connections: profiles)
         let viewModel = makeViewModel(
             store: store,
-            aliases: ["bastion"],
-            keychainResult: .none
+            aliases: ["bastion"]
         )
 
         await viewModel.loadConnections()
@@ -101,10 +100,14 @@ struct ConnectionManagementViewModelTests {
 
     @Test func saveNewConnectionPersistsThroughStore() async throws {
         let store = MockConnectionStore(connections: [])
+        let identity = SSHKeychainIdentityReference(
+            label: "bastion-key",
+            persistentReference: Data([0xAA, 0xBB])
+        )
         let viewModel = makeViewModel(
             store: store,
             aliases: ["bastion"],
-            keychainResult: .none
+            identities: [identity]
         )
 
         viewModel.startCreatingConnection(kind: .mySQL)
@@ -122,6 +125,10 @@ struct ConnectionManagementViewModelTests {
             $0.sshUsername = "sshapp"
         }
 
+        await viewModel.reloadSSHAliases()
+        await viewModel.reloadSSHIdentities()
+        viewModel.selectSSHIdentity(identity)
+
         await viewModel.saveCurrentConnection()
 
         let saved = await store.savedConnections()
@@ -134,6 +141,8 @@ struct ConnectionManagementViewModelTests {
         #expect(savedProfile.sshConfiguration.isEnabled)
         #expect(savedProfile.sshConfiguration.configAlias == "bastion")
         #expect(savedProfile.sshConfiguration.username == "sshapp")
+        #expect(savedProfile.sshConfiguration.keychainIdentityLabel == identity.label)
+        #expect(savedProfile.sshConfiguration.keychainIdentityReference == identity.persistentReference)
         #expect(savedProfile.passwordKeychainIdentifier == "tableglass.connection.new")
         #expect(viewModel.connections.count == 1)
         #expect(viewModel.selection == savedProfile.id)
@@ -168,13 +177,16 @@ struct ConnectionManagementViewModelTests {
         #expect(viewModel.selection == connectionB.id)
     }
 
-    @Test func enablingSSHTunnelResolvesKeychainIdentity() async throws {
+    @Test func enablingSSHTunnelLoadsKeychainIdentities() async throws {
         let store = MockConnectionStore()
-        let identityReference = Data([0x01, 0x02, 0x03])
+        let identity = SSHKeychainIdentityReference(
+            label: "bastion-key",
+            persistentReference: Data([0x01, 0x02, 0x03])
+        )
         let viewModel = makeViewModel(
             store: store,
             aliases: ["bastion"],
-            keychainResult: .found(label: "bastion-key", reference: identityReference)
+            identities: [identity]
         )
 
         viewModel.startCreatingConnection(kind: .postgreSQL)
@@ -186,57 +198,64 @@ struct ConnectionManagementViewModelTests {
         }
 
         await viewModel.reloadSSHAliases()
+        await viewModel.reloadSSHIdentities()
         viewModel.updateDraft {
             $0.useSSHTunnel = true
             $0.sshConfigAlias = "bastion"
             $0.sshUsername = "sshuser"
         }
 
-        try await Task.sleep(nanoseconds: 50_000_000)
-
         #expect(viewModel.sshAliases.contains("bastion"))
-        #expect(viewModel.sshIdentityState == .resolved(label: "bastion-key"))
-        #expect(viewModel.draft.sshKeychainIdentityReference == identityReference)
+        #expect(viewModel.availableSSHIdentities == [identity])
+
+        viewModel.selectSSHIdentity(identity)
+
+        #expect(viewModel.draft.sshKeychainIdentityReference == identity.persistentReference)
+        #expect(viewModel.draft.sshKeychainIdentityLabel == identity.label)
     }
 
-    @Test func missingKeychainIdentityUpdatesState() async throws {
+    @Test func sshTunnelDraftRequiresIdentity() async throws {
         let store = MockConnectionStore()
+        let identity = SSHKeychainIdentityReference(
+            label: "bastion-key",
+            persistentReference: Data([0xAA, 0xCC])
+        )
         let viewModel = makeViewModel(
             store: store,
             aliases: ["bastion"],
-            keychainResult: .none
+            identities: [identity]
         )
 
         viewModel.startCreatingConnection(kind: .postgreSQL)
         viewModel.updateDraft {
-            $0.name = "Missing Identity"
+            $0.name = "Validation"
             $0.host = "db.internal"
             $0.port = 5432
             $0.username = "dbuser"
-        }
-
-        await viewModel.reloadSSHAliases()
-        viewModel.updateDraft {
             $0.useSSHTunnel = true
             $0.sshConfigAlias = "bastion"
             $0.sshUsername = "sshuser"
         }
 
-        try await Task.sleep(nanoseconds: 50_000_000)
+        await viewModel.reloadSSHAliases()
+        await viewModel.reloadSSHIdentities()
 
-        #expect(viewModel.sshIdentityState == .missing)
-        #expect(viewModel.draft.sshKeychainIdentityReference == nil)
+        #expect(!viewModel.draft.isValid)
+
+        viewModel.selectSSHIdentity(identity)
+
+        #expect(viewModel.draft.isValid)
     }
 
     private func makeViewModel(
         store: MockConnectionStore,
         aliases: [String] = [],
-        keychainResult: MockSSHKeychainService.Result = .none
+        identities: [SSHKeychainIdentityReference] = []
     ) -> ConnectionManagementViewModel {
         ConnectionManagementViewModel(
             connectionStore: store,
             sshAliasProvider: MockSSHAliasProvider(aliases: aliases),
-            sshKeychainService: MockSSHKeychainService(result: keychainResult)
+            sshKeychainService: MockSSHKeychainService(identities: identities)
         )
     }
 }
@@ -286,26 +305,13 @@ struct MockSSHAliasProvider: SSHConfigAliasProvider, Sendable {
 }
 
 struct MockSSHKeychainService: SSHKeychainService, Sendable {
-    enum Result: Sendable {
-        case none
-        case found(label: String, reference: Data)
-        case failure(MockSSHKeychainServiceError)
-    }
+    var identities: [SSHKeychainIdentityReference]
 
-    var result: Result
+    func allIdentities() async throws -> [SSHKeychainIdentityReference] {
+        identities
+    }
 
     func identity(forLabel label: String) async throws -> SSHKeychainIdentityReference? {
-        switch result {
-        case .none:
-            return nil
-        case .found(let label, let reference):
-            return SSHKeychainIdentityReference(label: label, persistentReference: reference)
-        case .failure(let error):
-            throw error
-        }
+        identities.first { $0.label == label }
     }
-}
-
-enum MockSSHKeychainServiceError: Error, Sendable {
-    case lookup
 }
