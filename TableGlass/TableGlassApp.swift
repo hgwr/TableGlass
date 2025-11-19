@@ -28,16 +28,15 @@ struct TableGlassApp: App {
             ContentView(viewModel: connectionListViewModel)
                 .environmentObject(environment)
         }
+        .commands {
+            ConnectionManagementCommands()
+            DatabaseBrowserCommands(openStandaloneBrowserWindow: {
+                environment.openStandaloneDatabaseBrowserWindow()
+            })
+        }
 
         connectionManagementWindow
         databaseBrowserWindow
-    }
-
-    var commands: some Commands {
-        ConnectionManagementCommands()
-        DatabaseBrowserCommands(openStandaloneBrowserWindow: {
-            environment.openStandaloneDatabaseBrowserWindow()
-        })
     }
 }
 
