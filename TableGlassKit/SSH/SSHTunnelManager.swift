@@ -1,0 +1,31 @@
+import Foundation
+
+public struct SSHTunnelHandle: Sendable, Hashable {
+    public let identifier: UUID
+    public let localPort: Int
+
+    public init(identifier: UUID = UUID(), localPort: Int) {
+        self.identifier = identifier
+        self.localPort = localPort
+    }
+}
+
+public protocol SSHTunnelManager: Sendable {
+    func establishTunnel(for profile: ConnectionProfile) async throws -> SSHTunnelHandle
+    func closeTunnel(_ handle: SSHTunnelHandle) async
+}
+
+public struct NoopSSHTunnelManager: SSHTunnelManager {
+    public init() {}
+
+    public func establishTunnel(for profile: ConnectionProfile) async throws -> SSHTunnelHandle {
+        // No-op implementation: intentionally ignore the profile parameter.
+        _ = profile
+        return SSHTunnelHandle(localPort: 0)
+    }
+
+    public func closeTunnel(_ handle: SSHTunnelHandle) async {
+        // No-op implementation for testing/stubbing; intentionally discards the parameter.
+        _ = handle
+    }
+}

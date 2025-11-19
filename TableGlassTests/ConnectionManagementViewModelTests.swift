@@ -21,7 +21,10 @@ struct ConnectionManagementViewModelTests {
             )
         ]
         let store = MockConnectionStore(connections: profiles)
-        let viewModel = ConnectionManagementViewModel(connectionStore: store)
+        let viewModel = makeViewModel(
+            store: store,
+            aliases: ["bastion"]
+        )
 
         await viewModel.loadConnections()
 
@@ -32,6 +35,7 @@ struct ConnectionManagementViewModelTests {
         #expect(viewModel.draft.useSSHTunnel)
         #expect(viewModel.draft.sshConfigAlias == "bastion")
         #expect(viewModel.draft.sshUsername == "sshuser")
+        #expect(viewModel.draft.sshAuthenticationMethod == .keyFile)
         #expect(viewModel.draft.passwordKeychainIdentifier == "fixture.keychain")
     }
 
@@ -46,7 +50,7 @@ struct ConnectionManagementViewModelTests {
             )
         ]
         let store = MockConnectionStore(connections: profiles)
-        let viewModel = ConnectionManagementViewModel(connectionStore: store)
+        let viewModel = makeViewModel(store: store)
         await viewModel.loadConnections()
 
         viewModel.startCreatingConnection(kind: .sqlite)
@@ -66,7 +70,7 @@ struct ConnectionManagementViewModelTests {
             username: "postgres"
         )
         let store = MockConnectionStore(connections: [connection])
-        let viewModel = ConnectionManagementViewModel(connectionStore: store)
+        let viewModel = makeViewModel(store: store)
         await viewModel.loadConnections()
 
         viewModel.clearSelection()
@@ -77,7 +81,7 @@ struct ConnectionManagementViewModelTests {
 
     @Test func sqliteDraftAllowsZeroPort() async throws {
         let store = MockConnectionStore(connections: [])
-        let viewModel = ConnectionManagementViewModel(connectionStore: store)
+        let viewModel = makeViewModel(store: store)
 
         viewModel.startCreatingConnection(kind: .sqlite)
         viewModel.updateDraft {
@@ -97,7 +101,15 @@ struct ConnectionManagementViewModelTests {
 
     @Test func saveNewConnectionPersistsThroughStore() async throws {
         let store = MockConnectionStore(connections: [])
-        let viewModel = ConnectionManagementViewModel(connectionStore: store)
+        let identity = SSHKeychainIdentityReference(
+            label: "bastion-key",
+            persistentReference: Data([0xAA, 0xBB])
+        )
+        let viewModel = makeViewModel(
+            store: store,
+            aliases: ["bastion"],
+            identities: [identity]
+        )
 
         viewModel.startCreatingConnection(kind: .mySQL)
         viewModel.updateDraft {
@@ -114,6 +126,10 @@ struct ConnectionManagementViewModelTests {
             $0.sshUsername = "sshapp"
         }
 
+        await viewModel.reloadSSHAliases()
+        await viewModel.reloadSSHIdentities()
+        viewModel.selectSSHIdentity(identity)
+
         await viewModel.saveCurrentConnection()
 
         let saved = await store.savedConnections()
@@ -126,6 +142,9 @@ struct ConnectionManagementViewModelTests {
         #expect(savedProfile.sshConfiguration.isEnabled)
         #expect(savedProfile.sshConfiguration.configAlias == "bastion")
         #expect(savedProfile.sshConfiguration.username == "sshapp")
+        #expect(savedProfile.sshConfiguration.authenticationMethod == .keyFile)
+        #expect(savedProfile.sshConfiguration.keychainIdentityLabel == identity.label)
+        #expect(savedProfile.sshConfiguration.keychainIdentityReference == identity.persistentReference)
         #expect(savedProfile.passwordKeychainIdentifier == "tableglass.connection.new")
         #expect(viewModel.connections.count == 1)
         #expect(viewModel.selection == savedProfile.id)
@@ -148,7 +167,7 @@ struct ConnectionManagementViewModelTests {
             username: "postgres"
         )
         let store = MockConnectionStore(connections: [connectionA, connectionB])
-        let viewModel = ConnectionManagementViewModel(connectionStore: store)
+        let viewModel = makeViewModel(store: store)
         await viewModel.loadConnections()
         viewModel.applySelection(id: connectionA.id)
 
@@ -158,6 +177,118 @@ struct ConnectionManagementViewModelTests {
         #expect(deleted == [connectionA.id])
         #expect(viewModel.connections == [connectionB])
         #expect(viewModel.selection == connectionB.id)
+    }
+
+    @Test func enablingSSHTunnelLoadsKeychainIdentities() async throws {
+        let store = MockConnectionStore()
+        let identity = SSHKeychainIdentityReference(
+            label: "bastion-key",
+            persistentReference: Data([0x01, 0x02, 0x03])
+        )
+        let viewModel = makeViewModel(
+            store: store,
+            aliases: ["bastion"],
+            identities: [identity]
+        )
+
+        viewModel.startCreatingConnection(kind: .postgreSQL)
+        viewModel.updateDraft {
+            $0.name = "Keychain Test"
+            $0.host = "db.internal"
+            $0.port = 5432
+            $0.username = "dbuser"
+        }
+
+        await viewModel.reloadSSHAliases()
+        await viewModel.reloadSSHIdentities()
+        viewModel.updateDraft {
+            $0.useSSHTunnel = true
+            $0.sshConfigAlias = "bastion"
+            $0.sshUsername = "sshuser"
+        }
+
+        #expect(viewModel.sshAliases.contains("bastion"))
+        #expect(viewModel.availableSSHIdentities == [identity])
+
+        viewModel.selectSSHIdentity(identity)
+
+        #expect(viewModel.draft.sshKeychainIdentityReference == identity.persistentReference)
+        #expect(viewModel.draft.sshKeychainIdentityLabel == identity.label)
+    }
+
+    @Test func sshTunnelDraftRequiresIdentity() async throws {
+        let store = MockConnectionStore()
+        let identity = SSHKeychainIdentityReference(
+            label: "bastion-key",
+            persistentReference: Data([0xAA, 0xCC])
+        )
+        let viewModel = makeViewModel(
+            store: store,
+            aliases: ["bastion"],
+            identities: [identity]
+        )
+
+        viewModel.startCreatingConnection(kind: .postgreSQL)
+        viewModel.updateDraft {
+            $0.name = "Validation"
+            $0.host = "db.internal"
+            $0.port = 5432
+            $0.username = "dbuser"
+            $0.useSSHTunnel = true
+            $0.sshConfigAlias = "bastion"
+            $0.sshUsername = "sshuser"
+        }
+
+        await viewModel.reloadSSHAliases()
+        await viewModel.reloadSSHIdentities()
+
+        #expect(!viewModel.draft.isValid)
+
+        viewModel.selectSSHIdentity(identity)
+
+        #expect(viewModel.draft.isValid)
+    }
+
+    @Test func sshAgentAuthenticationReflectsReachability() async throws {
+        let store = MockConnectionStore()
+        let viewModel = makeViewModel(
+            store: store,
+            aliases: ["bastion"],
+            identities: [],
+            isSSHAgentReachable: true
+        )
+
+        viewModel.startCreatingConnection(kind: .postgreSQL)
+        viewModel.updateDraft {
+            $0.name = "Agent Test"
+            $0.host = "db.internal"
+            $0.port = 5432
+            $0.username = "dbuser"
+        }
+
+        await viewModel.reloadSSHAliases()
+        viewModel.updateDraft {
+            $0.useSSHTunnel = true
+            $0.sshConfigAlias = "bastion"
+            $0.sshUsername = "sshuser"
+            $0.sshAuthenticationMethod = .sshAgent
+        }
+
+        #expect(viewModel.isSSHAgentReachable)
+    }
+
+    private func makeViewModel(
+        store: MockConnectionStore,
+        aliases: [String] = [],
+        identities: [SSHKeychainIdentityReference] = [],
+        isSSHAgentReachable: Bool = false
+    ) -> ConnectionManagementViewModel {
+        ConnectionManagementViewModel(
+            connectionStore: store,
+            sshAliasProvider: MockSSHAliasProvider(aliases: aliases),
+            sshKeychainService: MockSSHKeychainService(identities: identities),
+            sshAgentService: MockSSHAgentService(isReachable: isSSHAgentReachable)
+        )
     }
 }
 
@@ -194,5 +325,33 @@ actor MockConnectionStore: ConnectionStore {
 
     func deletedIDs() -> [ConnectionProfile.ID] {
         deleted
+    }
+}
+
+struct MockSSHAliasProvider: SSHConfigAliasProvider, Sendable {
+    let aliases: [String]
+
+    func availableAliases() async throws -> [String] {
+        aliases
+    }
+}
+
+struct MockSSHKeychainService: SSHKeychainService, Sendable {
+    var identities: [SSHKeychainIdentityReference]
+
+    func allIdentities() async throws -> [SSHKeychainIdentityReference] {
+        identities
+    }
+
+    func identity(forLabel label: String) async throws -> SSHKeychainIdentityReference? {
+        identities.first { $0.label == label }
+    }
+}
+
+struct MockSSHAgentService: SSHAgentService, Sendable {
+    var isReachable: Bool
+
+    func isAgentReachable() -> Bool {
+        isReachable
     }
 }
