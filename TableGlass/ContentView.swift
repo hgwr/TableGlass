@@ -10,6 +10,8 @@ import TableGlassKit
 
 struct ContentView: View {
     @ObservedObject private var viewModel: ConnectionListViewModel
+    @Environment(\.openWindow) private var openWindow
+    @State private var didTriggerUITestBrowserWindow = false
 
     init(viewModel: ConnectionListViewModel) {
         _viewModel = ObservedObject(wrappedValue: viewModel)
@@ -46,6 +48,12 @@ struct ContentView: View {
         }
         .task {
             await viewModel.loadConnections()
+
+            guard !didTriggerUITestBrowserWindow else { return }
+            if ProcessInfo.processInfo.arguments.contains(UITestArguments.databaseBrowser.rawValue) {
+                didTriggerUITestBrowserWindow = true
+                openWindow(id: SceneID.databaseBrowser.rawValue)
+            }
         }
     }
 }
