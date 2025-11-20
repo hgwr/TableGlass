@@ -40,7 +40,14 @@ final class TableGlassUITests: XCTestCase {
         let tabGroup = app.tabGroups["databaseBrowser.tabGroup"]
         XCTAssertTrue(tabGroup.waitForExistence(timeout: 2))
 
-        XCTAssertGreaterThan(tabGroup.buttons.count, 1)
+        let tabCount = tabGroup.tabs.count
+        let buttonCount = tabGroup.buttons.count
+        let radioButtonCount = tabGroup.radioButtons.count
+        let debugDescription = app.debugDescription
+        let attachment = XCTAttachment(string: "tabs=\(tabCount) buttons=\(buttonCount) radioButtons=\(radioButtonCount)\n\(debugDescription)")
+        attachment.lifetime = .keepAlways
+        add(attachment)
+        XCTAssertGreaterThan(tabCount, 1)
 
         let logButton = app.buttons["databaseBrowser.showLogButton"]
         XCTAssertTrue(logButton.exists)
