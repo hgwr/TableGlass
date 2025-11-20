@@ -32,26 +32,26 @@ enum DatabaseBrowserSessionStatus: String, Hashable, CaseIterable {
     var description: String {
         switch self {
         case .connecting:
-            "Connecting"
+            return "Connecting"
         case .online:
-            "Online"
+            return "Online"
         case .readOnly:
-            "Read Only"
+            return "Read Only"
         case .error:
-            "Error"
+            return "Error"
         }
     }
 
     var indicatorColor: Color {
         switch self {
         case .connecting:
-            .yellow
+            return .yellow
         case .online:
-            .green
+            return .green
         case .readOnly:
-            .blue
+            return .blue
         case .error:
-            .red
+            return .red
         }
     }
 }
