@@ -32,6 +32,46 @@ final class TableGlassUITests: XCTestCase {
     }
 
     @MainActor
+    func testDatabaseBrowserTabsRender() throws {
+        let app = XCUIApplication()
+        app.launchArguments.append("--uitest-database-browser")
+        app.launch()
+
+        let tabGroup = app.tabGroups["databaseBrowser.tabGroup"]
+        XCTAssertTrue(tabGroup.waitForExistence(timeout: 2))
+
+        let tabCount = tabGroup.tabs.count
+        let buttonCount = tabGroup.buttons.count
+        let radioButtonCount = tabGroup.radioButtons.count
+        let debugDescription = app.debugDescription
+        let attachment = XCTAttachment(string: "tabs=\(tabCount) buttons=\(buttonCount) radioButtons=\(radioButtonCount)\n\(debugDescription)")
+        attachment.lifetime = .keepAlways
+        add(attachment)
+        XCTAssertGreaterThan(tabCount, 1)
+
+        let logButton = app.buttons["databaseBrowser.showLogButton"]
+        XCTAssertTrue(logButton.exists)
+
+        let readOnlyToggle = app.switches["databaseBrowser.readOnlyToggle"]
+        XCTAssertTrue(readOnlyToggle.exists)
+    }
+
+    @MainActor
+    func testDatabaseBrowserSidebarNavigation() throws {
+        let app = XCUIApplication()
+        app.launchArguments.append("--uitest-database-browser")
+        app.launch()
+
+        let usersRow = app.staticTexts["databaseBrowser.sidebar.users"]
+        XCTAssertTrue(usersRow.waitForExistence(timeout: 2))
+        usersRow.click()
+
+        let detailTitle = app.staticTexts["databaseBrowser.detailTitle"]
+        XCTAssertTrue(detailTitle.waitForExistence(timeout: 1))
+        XCTAssertEqual(detailTitle.label, "users")
+    }
+
+    @MainActor
     func testLaunchPerformance() throws {
         // This measures how long it takes to launch your application.
         measure(metrics: [XCTApplicationLaunchMetric()]) {

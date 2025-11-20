@@ -28,17 +28,16 @@ struct TableGlassApp: App {
             ContentView(viewModel: connectionListViewModel)
                 .environmentObject(environment)
         }
+        .commands {
+            ConnectionManagementCommands()
+            DatabaseBrowserCommands(openStandaloneBrowserWindow: {
+                environment.openStandaloneDatabaseBrowserWindow()
+            })
+        }
 
         connectionManagementWindow
+        databaseBrowserWindow
     }
-
-    var commands: some Commands {
-        ConnectionManagementCommands()
-    }
-}
-
-private enum SceneID: String {
-    case connectionManagement
 }
 
 extension TableGlassApp {
@@ -52,6 +51,17 @@ extension TableGlassApp {
     }
 }
 
+extension TableGlassApp {
+    fileprivate var databaseBrowserWindow: some Scene {
+        WindowGroup("Database Browser", id: SceneID.databaseBrowser.rawValue) {
+            DatabaseBrowserWindow(viewModel: environment.makeDatabaseBrowserViewModel())
+                .environmentObject(environment)
+                .frame(minWidth: 900, minHeight: 600)
+        }
+        .defaultSize(width: 1080, height: 720)
+    }
+}
+
 private struct ConnectionManagementCommands: Commands {
     @Environment(\.openWindow) private var openWindow
 
@@ -61,6 +71,24 @@ private struct ConnectionManagementCommands: Commands {
                 openWindow(id: SceneID.connectionManagement.rawValue)
             }
             .keyboardShortcut("M", modifiers: [.command, .shift])
+        }
+    }
+}
+
+private struct DatabaseBrowserCommands: Commands {
+    @Environment(\.openWindow) private var openWindow
+    let openStandaloneBrowserWindow: () -> Void
+
+    var body: some Commands {
+        CommandMenu("Database Browser") {
+            Button("New Browser Window") {
+                openWindow(id: SceneID.databaseBrowser.rawValue)
+            }
+            .keyboardShortcut("B", modifiers: [.command, .shift])
+
+            Button("New Detached Browser Window") {
+                openStandaloneBrowserWindow()
+            }
         }
     }
 }
