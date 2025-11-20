@@ -5,7 +5,7 @@ import AppKit
 #endif
 
 @MainActor
-final class DatabaseBrowserWindowCoordinator {
+final class DatabaseBrowserWindowCoordinator: NSObject {
     #if canImport(AppKit)
     private var controllers: [NSWindowController] = []
     #endif
@@ -18,6 +18,7 @@ final class DatabaseBrowserWindowCoordinator {
             backing: .buffered,
             defer: false
         )
+        window.delegate = self
         let hostingController = NSHostingController(rootView: DatabaseBrowserWindow(viewModel: viewModel))
         window.title = viewModel.windowTitle
         window.contentViewController = hostingController
@@ -29,3 +30,12 @@ final class DatabaseBrowserWindowCoordinator {
         #endif
     }
 }
+
+#if canImport(AppKit)
+extension DatabaseBrowserWindowCoordinator: NSWindowDelegate {
+    func windowWillClose(_ notification: Notification) {
+        guard let window = notification.object as? NSWindow else { return }
+        controllers.removeAll { $0.window === window }
+    }
+}
+#endif
