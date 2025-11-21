@@ -223,6 +223,7 @@ private extension DatabaseBrowserSessionViewModel {
         }
     }
 
+    // TODO: Follow-up: move recursive expansion off the main actor to avoid blocking large schemas.
     static func expand(nodes: inout [DatabaseObjectTreeNode]) {
         for index in nodes.indices {
             if let pending = nodes[index].pendingChildren {
