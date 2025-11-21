@@ -51,7 +51,9 @@ final class DatabaseBrowserSessionViewModel: ObservableObject, Identifiable {
         let result = await Task.detached(priority: .userInitiated) { () async -> Result<[DatabaseObjectTreeNode], Error> in
             do {
                 let schema = try await provider.metadata(scope: scope)
-                let nodes = buildTree(schema)
+                let nodes = await MainActor.run {
+                    buildTree(schema)
+                }
                 return .success(nodes)
             } catch {
                 return .failure(error)
@@ -72,14 +74,15 @@ final class DatabaseBrowserSessionViewModel: ObservableObject, Identifiable {
         isRefreshing = false
     }
 
-    func toggleExpansion(for nodeID: DatabaseObjectTreeNode.ID, isExpanded: Bool) {
-        updateNode(nodeID) { node in
-            node.isExpanded = isExpanded
-        }
+    @discardableResult
+    func toggleExpansion(for nodeID: DatabaseObjectTreeNode.ID, isExpanded: Bool) -> Task<Void, Never>? {
+        Task { @MainActor in
+            updateNode(nodeID) { node in
+                node.isExpanded = isExpanded
+            }
 
-        guard isExpanded else { return }
+            guard isExpanded else { return }
 
-        Task {
             await loadChildrenIfNeeded(for: nodeID)
         }
     }
@@ -101,10 +104,12 @@ final class DatabaseBrowserSessionViewModel: ObservableObject, Identifiable {
         isExpandingAll = true
         let currentNodes = treeNodes
 
-        let expansionTask = Task.detached(priority: .userInitiated) { () -> [DatabaseObjectTreeNode] in
-            var nodes = currentNodes
-            Self.expand(nodes: &nodes)
-            return nodes
+        let expansionTask = Task.detached(priority: .userInitiated) { () async -> [DatabaseObjectTreeNode] in
+            await MainActor.run { () -> [DatabaseObjectTreeNode] in
+                var nodes = currentNodes
+                Self.expand(nodes: &nodes)
+                return nodes
+            }
         }
 
         Task {
@@ -225,14 +230,14 @@ private extension DatabaseBrowserSessionViewModel {
         return false
     }
 
-    nonisolated static func collapse(nodes: inout [DatabaseObjectTreeNode]) {
+    static func collapse(nodes: inout [DatabaseObjectTreeNode]) {
         for index in nodes.indices {
             nodes[index].isExpanded = false
             collapse(nodes: &nodes[index].children)
         }
     }
 
-    nonisolated static func expand(nodes: inout [DatabaseObjectTreeNode]) {
+    static func expand(nodes: inout [DatabaseObjectTreeNode]) {
         for index in nodes.indices {
             if let pending = nodes[index].pendingChildren {
                 nodes[index].children = Self.buildChildren(from: pending)

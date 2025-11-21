@@ -45,7 +45,7 @@ actor PreviewDatabaseMetadataProvider: DatabaseMetadataProvider {
 }
 
 extension DatabaseSchema {
-    static var previewBrowserSchema: DatabaseSchema {
+    nonisolated(unsafe) static var previewBrowserSchema: DatabaseSchema {
         DatabaseSchema(
             catalogs: [
                 DatabaseCatalog(
