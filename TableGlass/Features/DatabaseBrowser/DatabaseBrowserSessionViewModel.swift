@@ -44,28 +44,12 @@ final class DatabaseBrowserSessionViewModel: ObservableObject, Identifiable {
         isRefreshing = true
         loadError = nil
 
-        let provider = metadataProvider
-        let scope = metadataScope
-        let buildTree = Self.buildTree(from:)
-
-        let result = await Task.detached(priority: .userInitiated) { () async -> Result<[DatabaseObjectTreeNode], Error> in
-            do {
-                let schema = try await provider.metadata(scope: scope)
-                let nodes = await MainActor.run {
-                    buildTree(schema)
-                }
-                return .success(nodes)
-            } catch {
-                return .failure(error)
-            }
-        }.value
-
-        switch result {
-        case .success(let nodes):
-            treeNodes = nodes
+        do {
+            let schema = try await metadataProvider.metadata(scope: metadataScope)
+            treeNodes = Self.buildTree(from: schema)
             selectedNodeID = nil
             loadError = nil
-        case .failure(let error):
+        } catch {
             treeNodes = []
             selectedNodeID = nil
             loadError = error.localizedDescription
@@ -77,6 +61,8 @@ final class DatabaseBrowserSessionViewModel: ObservableObject, Identifiable {
     @discardableResult
     func toggleExpansion(for nodeID: DatabaseObjectTreeNode.ID, isExpanded: Bool) -> Task<Void, Never>? {
         Task { @MainActor in
+            await MainActor.yield()
+
             updateNode(nodeID) { node in
                 node.isExpanded = isExpanded
             }
@@ -128,7 +114,7 @@ final class DatabaseBrowserSessionViewModel: ObservableObject, Identifiable {
 // MARK: - Tree construction
 
 private extension DatabaseBrowserSessionViewModel {
-    nonisolated static func buildTree(from schema: DatabaseSchema) -> [DatabaseObjectTreeNode] {
+    static func buildTree(from schema: DatabaseSchema) -> [DatabaseObjectTreeNode] {
         schema.catalogs.sorted { $0.name < $1.name }.map { catalog in
             DatabaseObjectTreeNode(
                 title: catalog.name,
@@ -156,7 +142,7 @@ private extension DatabaseBrowserSessionViewModel {
         }
     }
 
-    nonisolated static func buildChildren(from pending: DatabaseObjectTreeNode.PendingChildren) -> [DatabaseObjectTreeNode] {
+    static func buildChildren(from pending: DatabaseObjectTreeNode.PendingChildren) -> [DatabaseObjectTreeNode] {
         switch pending {
         case .namespaces(let catalog, let namespaces):
             return namespaces.sorted { $0.name < $1.name }.map { namespace in
