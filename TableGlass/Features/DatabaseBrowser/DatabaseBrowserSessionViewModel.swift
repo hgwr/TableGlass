@@ -128,7 +128,7 @@ final class DatabaseBrowserSessionViewModel: ObservableObject, Identifiable {
 // MARK: - Tree construction
 
 private extension DatabaseBrowserSessionViewModel {
-    static func buildTree(from schema: DatabaseSchema) -> [DatabaseObjectTreeNode] {
+    nonisolated static func buildTree(from schema: DatabaseSchema) -> [DatabaseObjectTreeNode] {
         schema.catalogs.sorted { $0.name < $1.name }.map { catalog in
             DatabaseObjectTreeNode(
                 title: catalog.name,
@@ -156,7 +156,7 @@ private extension DatabaseBrowserSessionViewModel {
         }
     }
 
-    static func buildChildren(from pending: DatabaseObjectTreeNode.PendingChildren) -> [DatabaseObjectTreeNode] {
+    nonisolated static func buildChildren(from pending: DatabaseObjectTreeNode.PendingChildren) -> [DatabaseObjectTreeNode] {
         switch pending {
         case .namespaces(let catalog, let namespaces):
             return namespaces.sorted { $0.name < $1.name }.map { namespace in
