@@ -108,8 +108,13 @@ final class DatabaseBrowserSessionViewModel: ObservableObject, Identifiable {
 
         Task {
             defer { isExpandingAll = false }
-            let expandedNodes = await expansionTask.value
-            treeNodes = expandedNodes
+            do {
+                treeNodes = try await expansionTask.value
+            } catch {
+                // It's important to handle potential errors to prevent a crash.
+                // Consider logging this error or displaying it to the user.
+                print("Failed to expand all nodes: \(error)")
+            }
         }
     }
 
