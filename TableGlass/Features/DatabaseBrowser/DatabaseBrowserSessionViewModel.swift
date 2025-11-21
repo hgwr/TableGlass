@@ -1,3 +1,4 @@
+import Combine
 import Foundation
 import TableGlassKit
 
@@ -47,7 +48,7 @@ final class DatabaseBrowserSessionViewModel: ObservableObject, Identifiable {
         let scope = metadataScope
         let buildTree = Self.buildTree(from:)
 
-        let result = await Task.detached(priority: .userInitiated) { () -> Result<[DatabaseObjectTreeNode], Error> in
+        let result = await Task.detached(priority: .userInitiated) { () async -> Result<[DatabaseObjectTreeNode], Error> in
             do {
                 let schema = try await provider.metadata(scope: scope)
                 let nodes = buildTree(schema)
@@ -108,13 +109,8 @@ final class DatabaseBrowserSessionViewModel: ObservableObject, Identifiable {
 
         Task {
             defer { isExpandingAll = false }
-            do {
-                treeNodes = try await expansionTask.value
-            } catch {
-                // It's important to handle potential errors to prevent a crash.
-                // Consider logging this error or displaying it to the user.
-                print("Failed to expand all nodes: \(error)")
-            }
+            let expandedNodes = await expansionTask.value
+            treeNodes = expandedNodes
         }
     }
 
@@ -127,7 +123,7 @@ final class DatabaseBrowserSessionViewModel: ObservableObject, Identifiable {
 // MARK: - Tree construction
 
 private extension DatabaseBrowserSessionViewModel {
-    static func buildTree(from schema: DatabaseSchema) -> [DatabaseObjectTreeNode] {
+    nonisolated static func buildTree(from schema: DatabaseSchema) -> [DatabaseObjectTreeNode] {
         schema.catalogs.sorted { $0.name < $1.name }.map { catalog in
             DatabaseObjectTreeNode(
                 title: catalog.name,
@@ -155,7 +151,7 @@ private extension DatabaseBrowserSessionViewModel {
         }
     }
 
-    static func buildChildren(from pending: DatabaseObjectTreeNode.PendingChildren) -> [DatabaseObjectTreeNode] {
+    nonisolated static func buildChildren(from pending: DatabaseObjectTreeNode.PendingChildren) -> [DatabaseObjectTreeNode] {
         switch pending {
         case .namespaces(let catalog, let namespaces):
             return namespaces.sorted { $0.name < $1.name }.map { namespace in
@@ -229,14 +225,14 @@ private extension DatabaseBrowserSessionViewModel {
         return false
     }
 
-    static func collapse(nodes: inout [DatabaseObjectTreeNode]) {
+    nonisolated static func collapse(nodes: inout [DatabaseObjectTreeNode]) {
         for index in nodes.indices {
             nodes[index].isExpanded = false
             collapse(nodes: &nodes[index].children)
         }
     }
 
-    static func expand(nodes: inout [DatabaseObjectTreeNode]) {
+    nonisolated static func expand(nodes: inout [DatabaseObjectTreeNode]) {
         for index in nodes.indices {
             if let pending = nodes[index].pendingChildren {
                 nodes[index].children = Self.buildChildren(from: pending)
@@ -250,7 +246,7 @@ private extension DatabaseBrowserSessionViewModel {
 
 extension DatabaseBrowserSessionViewModel {
     static func previewSessions(
-        metadataProviderFactory: @escaping @Sendable () -> any DatabaseMetadataProvider = {
+        metadataProviderFactory: @escaping () -> any DatabaseMetadataProvider = {
             PreviewDatabaseMetadataProvider(schema: .previewBrowserSchema)
         }
     ) -> [DatabaseBrowserSessionViewModel] {
