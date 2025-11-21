@@ -10,6 +10,7 @@ final class DatabaseBrowserSessionViewModel: ObservableObject, Identifiable {
     @Published private(set) var treeNodes: [DatabaseObjectTreeNode]
     @Published var selectedNodeID: DatabaseObjectTreeNode.ID?
     @Published private(set) var isRefreshing: Bool = false
+    @Published private(set) var isExpandingAll: Bool = false
     @Published private(set) var loadError: String?
 
     private let metadataProvider: any DatabaseMetadataProvider
@@ -76,7 +77,10 @@ final class DatabaseBrowserSessionViewModel: ObservableObject, Identifiable {
         }
 
         guard isExpanded else { return }
-        loadChildrenIfNeeded(for: nodeID)
+
+        Task {
+            await loadChildrenIfNeeded(for: nodeID)
+        }
     }
 
     func selectNode(_ nodeID: DatabaseObjectTreeNode.ID?) {
@@ -85,15 +89,28 @@ final class DatabaseBrowserSessionViewModel: ObservableObject, Identifiable {
 
     func collapseAll() {
         var nodes = treeNodes
-        collapse(nodes: &nodes)
+        Self.collapse(nodes: &nodes)
         treeNodes = nodes
         selectedNodeID = nil
     }
 
     func expandAll() {
-        var nodes = treeNodes
-        expand(nodes: &nodes)
-        treeNodes = nodes
+        guard !isExpandingAll else { return }
+
+        isExpandingAll = true
+        let currentNodes = treeNodes
+
+        let expansionTask = Task.detached(priority: .userInitiated) { () -> [DatabaseObjectTreeNode] in
+            var nodes = currentNodes
+            Self.expand(nodes: &nodes)
+            return nodes
+        }
+
+        Task {
+            defer { isExpandingAll = false }
+            let expandedNodes = await expansionTask.value
+            treeNodes = expandedNodes
+        }
     }
 
     var selectedNode: DatabaseObjectTreeNode? {
@@ -115,12 +132,14 @@ private extension DatabaseBrowserSessionViewModel {
         }
     }
 
-    func loadChildrenIfNeeded(for nodeID: DatabaseObjectTreeNode.ID) {
+    func loadChildrenIfNeeded(for nodeID: DatabaseObjectTreeNode.ID) async {
         guard let pending = pendingChildren(for: nodeID) else { return }
 
         updateNode(nodeID) { node in
             node.isLoading = true
         }
+
+        await Task.yield()
 
         let children = Self.buildChildren(from: pending)
 
@@ -205,14 +224,14 @@ private extension DatabaseBrowserSessionViewModel {
         return false
     }
 
-    func collapse(nodes: inout [DatabaseObjectTreeNode]) {
+    static func collapse(nodes: inout [DatabaseObjectTreeNode]) {
         for index in nodes.indices {
             nodes[index].isExpanded = false
             collapse(nodes: &nodes[index].children)
         }
     }
 
-    func expand(nodes: inout [DatabaseObjectTreeNode]) {
+    static func expand(nodes: inout [DatabaseObjectTreeNode]) {
         for index in nodes.indices {
             if let pending = nodes[index].pendingChildren {
                 nodes[index].children = Self.buildChildren(from: pending)

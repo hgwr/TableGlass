@@ -10,7 +10,37 @@ actor PreviewDatabaseMetadataProvider: DatabaseMetadataProvider {
 
     func metadata(scope: DatabaseMetadataScope) async throws -> DatabaseSchema {
         try await Task.sleep(nanoseconds: 25_000_000)
-        return schema
+
+        let filteredCatalogs = schema.catalogs.compactMap { catalog -> DatabaseCatalog? in
+            let namespaces = catalog.namespaces
+                .filter { namespace in
+                    guard let allowedSchemas = scope.schemaNames else { return true }
+                    return allowedSchemas.contains(namespace.name)
+                }
+                .compactMap { namespace -> DatabaseNamespace? in
+                    let tables = scope.includeTables ? namespace.tables : []
+                    let views = scope.includeViews ? namespace.views : []
+                    let procedures = scope.includeProcedures ? namespace.procedures : []
+
+                    guard !tables.isEmpty || !views.isEmpty || !procedures.isEmpty else { return nil }
+
+                    return DatabaseNamespace(
+                        name: namespace.name,
+                        tables: tables,
+                        views: views,
+                        procedures: procedures
+                    )
+                }
+
+            guard !namespaces.isEmpty else { return nil }
+
+            return DatabaseCatalog(
+                name: catalog.name,
+                namespaces: namespaces
+            )
+        }
+
+        return DatabaseSchema(catalogs: filteredCatalogs)
     }
 }
 
