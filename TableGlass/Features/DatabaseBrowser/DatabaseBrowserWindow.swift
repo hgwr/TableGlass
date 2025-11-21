@@ -96,6 +96,11 @@ private struct DatabaseBrowserSessionView: View {
                 Text("Objects")
                     .font(.subheadline)
                     .bold()
+                if session.isExpandingAll {
+                    ProgressView()
+                        .controlSize(.mini)
+                        .accessibilityIdentifier(DatabaseBrowserAccessibility.expandAllProgress.rawValue)
+                }
                 Spacer()
                 Button {
                     Task {
@@ -116,6 +121,7 @@ private struct DatabaseBrowserSessionView: View {
                 .buttonStyle(.borderless)
                 .help("Expand all nodes")
                 .accessibilityIdentifier(DatabaseBrowserAccessibility.expandAllButton.rawValue)
+                .disabled(session.isExpandingAll)
 
                 Button {
                     session.collapseAll()
@@ -125,6 +131,7 @@ private struct DatabaseBrowserSessionView: View {
                 .buttonStyle(.borderless)
                 .help("Collapse all nodes")
                 .accessibilityIdentifier(DatabaseBrowserAccessibility.collapseAllButton.rawValue)
+                .disabled(session.isExpandingAll)
             }
             .padding(.horizontal, 8)
 
@@ -293,9 +300,6 @@ private struct DatabaseObjectTreeRow: View {
         .background(selection == node.id ? Color.accentColor.opacity(0.12) : .clear)
         .clipShape(RoundedRectangle(cornerRadius: 6))
         .tag(node.id as DatabaseObjectTreeNode.ID?)
-        .onTapGesture {
-            selection = node.id
-        }
     }
 }
 
@@ -431,6 +435,7 @@ private enum DatabaseBrowserAccessibility: String {
     case detailTitle = "databaseBrowser.detailTitle"
     case refreshButton = "databaseBrowser.refreshButton"
     case expandAllButton = "databaseBrowser.expandAll"
+    case expandAllProgress = "databaseBrowser.expandAllProgress"
     case collapseAllButton = "databaseBrowser.collapseAll"
     case sidebarList = "databaseBrowser.sidebarList"
 
