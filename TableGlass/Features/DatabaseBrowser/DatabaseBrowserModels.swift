@@ -35,7 +35,7 @@ enum DatabaseBrowserSessionStatus: String, Hashable, CaseIterable {
     }
 }
 
-struct DatabaseObjectTreeNode: Identifiable, Hashable {
+struct DatabaseObjectTreeNode: Identifiable, Hashable, Sendable {
     enum Kind: Hashable {
         case catalog(name: String)
         case namespace(catalog: String, name: String)
@@ -44,7 +44,7 @@ struct DatabaseObjectTreeNode: Identifiable, Hashable {
         case storedProcedure(catalog: String, namespace: String, name: String)
     }
 
-    enum PendingChildren {
+    enum PendingChildren: Sendable {
         case namespaces(catalog: String, namespaces: [DatabaseNamespace])
         case namespaceObjects(catalog: String, namespace: DatabaseNamespace)
     }

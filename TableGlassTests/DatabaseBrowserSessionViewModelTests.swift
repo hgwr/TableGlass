@@ -40,7 +40,8 @@ struct DatabaseBrowserSessionViewModelTests {
             return
         }
 
-        session.toggleExpansion(for: mainCatalog.id, isExpanded: true)
+        let loadNamespaceTask = session.toggleExpansion(for: mainCatalog.id, isExpanded: true)
+        await loadNamespaceTask?.value
 
         guard let publicNamespace = session.treeNodes
             .first(where: { $0.title == "main" })?
@@ -50,7 +51,8 @@ struct DatabaseBrowserSessionViewModelTests {
             return
         }
 
-        session.toggleExpansion(for: publicNamespace.id, isExpanded: true)
+        let loadObjectsTask = session.toggleExpansion(for: publicNamespace.id, isExpanded: true)
+        await loadObjectsTask?.value
 
         let objectNames = session.treeNodes
             .first(where: { $0.title == "main" })?
