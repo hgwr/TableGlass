@@ -6,7 +6,7 @@ struct DatabaseSessionLogView: View {
     @ObservedObject var viewModel: DatabaseSessionLogViewModel
 
     var body: some View {
-        NavigationView {
+        NavigationStack {
             content
                 .navigationTitle("\(viewModel.databaseName) Log")
                 .toolbar {
@@ -18,21 +18,29 @@ struct DatabaseSessionLogView: View {
                     }
                 }
         }
+        .frame(minWidth: 720, minHeight: 480)
         .searchable(text: $viewModel.searchText, placement: .automatic, prompt: "Filter SQL")
     }
 
     private var content: some View {
         Group {
             if viewModel.displayEntries.isEmpty {
-                ContentUnavailableView("No Activity", systemImage: "doc.text.magnifyingglass", description: Text("Queries will appear here as you run them."))
+                ContentUnavailableView(
+                    "No Activity",
+                    systemImage: "doc.text.magnifyingglass",
+                    description: Text("Queries will appear here as you run them.")
+                )
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
             } else {
                 List(viewModel.displayEntries) { entry in
                     DatabaseSessionLogRow(entry: entry)
                         .padding(.vertical, 4)
                 }
-                .listStyle(.inset)
+                .listStyle(.inset(alternatesRowBackgrounds: true))
             }
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .padding()
     }
 
     private var statusFilterPicker: some View {
@@ -48,7 +56,7 @@ struct DatabaseSessionLogView: View {
 }
 
 private struct DatabaseSessionLogRow: View {
-    let entry: DatabaseSessionLogViewModel.DisplayEntry
+    let entry: DatabaseSessionLogDisplayEntry
 
     var body: some View {
         HStack(alignment: .top, spacing: 12) {

@@ -44,6 +44,7 @@ struct DatabaseQueryLogTests {
     }
 
     @Test
+    @MainActor
     func formatsTimestampsForDisplay() async throws {
         let formatter = DateFormatter()
         formatter.dateFormat = "yyyy-MM-dd HH:mm:ss"

@@ -2,14 +2,15 @@ import Combine
 import Foundation
 import TableGlassKit
 
+struct DatabaseSessionLogDisplayEntry: Identifiable, Equatable {
+    let id: UUID
+    let timestampText: String
+    let sql: String
+    let outcome: DatabaseQueryOutcome
+}
+
 @MainActor
 final class DatabaseSessionLogViewModel: ObservableObject {
-    struct DisplayEntry: Identifiable, Equatable {
-        let id: UUID
-        let timestampText: String
-        let sql: String
-        let outcome: DatabaseQueryOutcome
-    }
 
     @Published var searchText: String = ""
     @Published var statusFilter: StatusFilter = .all
@@ -33,7 +34,7 @@ final class DatabaseSessionLogViewModel: ObservableObject {
         streamTask?.cancel()
     }
 
-    var displayEntries: [DisplayEntry] {
+    var displayEntries: [DatabaseSessionLogDisplayEntry] {
         let filtered = entries.filter { entry in
             let matchesQuery = searchText.isEmpty || entry.sql.localizedCaseInsensitiveContains(searchText)
             let matchesFilter = switch statusFilter {
@@ -102,8 +103,8 @@ struct DatabaseSessionLogFormatter {
         }
     }
 
-    func makeDisplayEntry(from entry: DatabaseQueryLogEntry) -> DatabaseSessionLogViewModel.DisplayEntry {
-        DatabaseSessionLogViewModel.DisplayEntry(
+    func makeDisplayEntry(from entry: DatabaseQueryLogEntry) -> DatabaseSessionLogDisplayEntry {
+        DatabaseSessionLogDisplayEntry(
             id: entry.id,
             timestampText: dateFormatter.string(from: entry.timestamp),
             sql: entry.sql,
