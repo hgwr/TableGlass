@@ -40,9 +40,34 @@ final class DatabaseQueryEditorViewModel: ObservableObject {
 
     func allowsReadOnlyExecution(for sql: String? = nil) -> Bool {
         let trimmed = (sql ?? sqlText).trimmingCharacters(in: .whitespacesAndNewlines)
-        guard let keyword = trimmed.split(separator: " ", maxSplits: 1).first?.lowercased() else { return false }
+        let tokens = trimmed
+            .lowercased()
+            .split { !$0.isLetter }
+            .map(String.init)
+
+        guard let first = tokens.first else { return false }
 
         let readOnlyKeywords: Set<String> = ["select", "with", "show", "describe", "desc", "explain", "pragma"]
-        return readOnlyKeywords.contains(keyword)
+        let mutationKeywords: Set<String> = [
+            "insert",
+            "update",
+            "delete",
+            "drop",
+            "alter",
+            "truncate",
+            "create",
+            "replace",
+            "merge",
+            "grant",
+            "revoke",
+            "call",
+            "execute"
+        ]
+
+        if tokens.contains(where: { mutationKeywords.contains($0) }) {
+            return false
+        }
+
+        return readOnlyKeywords.contains(first)
     }
 }

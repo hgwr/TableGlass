@@ -34,6 +34,24 @@ struct DatabaseQueryEditorViewModelTests {
     }
 
     @Test
+    func readOnlyModeBlocksCTEMutations() async throws {
+        let executor = RecordingQueryExecutor(result: DatabaseQueryResult())
+        let viewModel = DatabaseQueryEditorViewModel(executor: executor.execute)
+        viewModel.sqlText = """
+        WITH cte AS (
+            SELECT * FROM artists
+        )
+        DELETE FROM artists WHERE id IN (SELECT id FROM cte)
+        """
+
+        await viewModel.execute(isReadOnly: true)
+
+        #expect(viewModel.errorMessage?.contains("Read-only") == true)
+        let requests = await executor.recordedRequests()
+        #expect(requests.isEmpty)
+    }
+
+    @Test
     func errorsSurfaceWithRetryOption() async throws {
         let executor = RecordingQueryExecutor(error: SampleError.failed)
         let viewModel = DatabaseQueryEditorViewModel(executor: executor.execute)
