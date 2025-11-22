@@ -147,6 +147,9 @@ private struct DatabaseBrowserSessionView: View {
                     .font(.title2)
                     .bold()
                     .accessibilityIdentifier(DatabaseBrowserAccessibility.detailTitle.rawValue)
+                    // Explicit label/value helps UI tests read the selected object's title.
+                    .accessibilityLabel(node.title)
+                    .accessibilityValue(node.title)
                 Label(node.kindDisplayName, systemImage: node.kind.systemImageName)
                     .foregroundStyle(.secondary)
                 Text(pathDescription(for: node))
@@ -299,6 +302,11 @@ private struct DatabaseObjectTreeRow: View {
         .contentShape(Rectangle())
         .background(selection == node.id ? Color.accentColor.opacity(0.12) : .clear)
         .clipShape(RoundedRectangle(cornerRadius: 6))
+        .onTapGesture {
+            selection = node.id
+            guard node.isExpandable else { return }
+            onToggle(node.id, !node.isExpanded)
+        }
         .tag(node.id as DatabaseObjectTreeNode.ID?)
     }
 }

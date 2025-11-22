@@ -61,7 +61,7 @@ final class DatabaseBrowserSessionViewModel: ObservableObject, Identifiable {
     @discardableResult
     func toggleExpansion(for nodeID: DatabaseObjectTreeNode.ID, isExpanded: Bool) -> Task<Void, Never>? {
         Task { @MainActor in
-            await MainActor.yield()
+            await Task.yield()
 
             updateNode(nodeID) { node in
                 node.isExpanded = isExpanded
