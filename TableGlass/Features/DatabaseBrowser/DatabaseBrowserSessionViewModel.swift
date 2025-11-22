@@ -13,6 +13,7 @@ final class DatabaseBrowserSessionViewModel: ObservableObject, Identifiable {
     @Published private(set) var isRefreshing: Bool = false
     @Published private(set) var isExpandingAll: Bool = false
     @Published private(set) var loadError: String?
+    let queryLog: DatabaseQueryLog
 
     private let metadataProvider: any DatabaseMetadataProvider
     private let metadataScope: DatabaseMetadataScope
@@ -23,7 +24,8 @@ final class DatabaseBrowserSessionViewModel: ObservableObject, Identifiable {
         status: DatabaseBrowserSessionStatus,
         isReadOnly: Bool,
         metadataProvider: some DatabaseMetadataProvider,
-        metadataScope: DatabaseMetadataScope = DatabaseMetadataScope()
+        metadataScope: DatabaseMetadataScope = DatabaseMetadataScope(),
+        queryLog: DatabaseQueryLog = DatabaseQueryLog()
     ) {
         self.id = id
         self.databaseName = databaseName
@@ -31,6 +33,7 @@ final class DatabaseBrowserSessionViewModel: ObservableObject, Identifiable {
         self.isReadOnly = isReadOnly
         self.metadataProvider = metadataProvider
         self.metadataScope = metadataScope
+        self.queryLog = queryLog
         self.treeNodes = []
     }
 
