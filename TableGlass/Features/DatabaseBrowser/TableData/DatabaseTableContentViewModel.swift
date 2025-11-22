@@ -263,7 +263,7 @@ final class DatabaseTableContentViewModel: ObservableObject {
         }
     }
 
-    private static func displayText(from value: DatabaseQueryValue?) -> String {
+    static func displayText(from value: DatabaseQueryValue?) -> String {
         guard let value else { return "" }
         if case .null = value { return "" }
         return value.description

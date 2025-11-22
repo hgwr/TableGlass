@@ -1,3 +1,4 @@
+import Foundation
 import TableGlassKit
 import Testing
 
@@ -43,8 +44,8 @@ struct DatabaseQueryEditorViewModelTests {
         #expect(viewModel.result == nil)
         #expect(viewModel.errorMessage == SampleError.failed.localizedDescription)
 
-        executor.error = nil
-        executor.result = DatabaseQueryResult(rows: [DatabaseQueryRow(values: ["name": .string("ok")])])
+        await executor.updateError(nil)
+        await executor.updateResult(DatabaseQueryResult(rows: [DatabaseQueryRow(values: ["name": .string("ok")])]))
 
         await viewModel.execute(isReadOnly: false)
 
@@ -81,8 +82,8 @@ struct DatabaseQueryEditorViewModelTests {
 }
 
 private actor RecordingQueryExecutor: DatabaseQueryExecutor {
-    var result: DatabaseQueryResult?
-    var error: Error?
+    private var result: DatabaseQueryResult?
+    private var error: Error?
     private var requests: [DatabaseQueryRequest] = []
 
     init(result: DatabaseQueryResult? = nil, error: Error? = nil) {
@@ -100,6 +101,14 @@ private actor RecordingQueryExecutor: DatabaseQueryExecutor {
 
     func recordedRequests() async -> [DatabaseQueryRequest] {
         requests
+    }
+
+    func updateResult(_ result: DatabaseQueryResult?) {
+        self.result = result
+    }
+
+    func updateError(_ error: Error?) {
+        self.error = error
     }
 }
 
