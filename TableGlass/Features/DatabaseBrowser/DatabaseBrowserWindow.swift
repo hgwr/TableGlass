@@ -41,6 +41,7 @@ private struct DatabaseBrowserSessionView: View {
 
     @StateObject private var logViewModel: DatabaseSessionLogViewModel
     @StateObject private var tableContentViewModel: DatabaseTableContentViewModel
+    @StateObject private var queryEditorViewModel: DatabaseQueryEditorViewModel
     @State private var isShowingLog = false
     @State private var isShowingModeConfirmation = false
     @State private var modeConfirmation = ModeChangeConfirmationState()
@@ -56,6 +57,7 @@ private struct DatabaseBrowserSessionView: View {
             log: session.queryLog
         ))
         _tableContentViewModel = StateObject(wrappedValue: session.makeTableContentViewModel())
+        _queryEditorViewModel = StateObject(wrappedValue: session.makeQueryEditorViewModel())
     }
 
     var body: some View {
@@ -199,6 +201,11 @@ private struct DatabaseBrowserSessionView: View {
 
     private var detailView: some View {
         VStack(alignment: .leading, spacing: 12) {
+            DatabaseQueryEditorView(
+                viewModel: queryEditorViewModel,
+                isReadOnly: session.isReadOnly
+            )
+            Divider()
             detailHeader
             Divider()
             detailContent
@@ -636,6 +643,10 @@ enum DatabaseBrowserAccessibility: String {
     case modeChangeConfirm = "databaseBrowser.modeChange.confirmButton"
     case modeChangeCancel = "databaseBrowser.modeChange.cancelButton"
     case modeChangeMessage = "databaseBrowser.modeChange.message"
+    case queryEditor = "databaseBrowser.query.editor"
+    case queryRunButton = "databaseBrowser.query.runButton"
+    case queryResultGrid = "databaseBrowser.query.resultGrid"
+    case queryErrorMessage = "databaseBrowser.query.error"
 
     static func sidebarRow(for name: String) -> String {
         "databaseBrowser.sidebar.\(name)"
