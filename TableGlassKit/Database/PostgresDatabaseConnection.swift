@@ -490,10 +490,6 @@ private actor PostgresDatabaseTransaction: DatabaseTransaction {
         self.errorMapper = errorMapper
     }
 
-    deinit {
-        Task { await rollback() }
-    }
-
     @discardableResult
     func execute(_ request: DatabaseQueryRequest) async throws -> DatabaseQueryResult {
         do {
