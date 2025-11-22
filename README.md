@@ -48,7 +48,6 @@ Install the following tools (Homebrew examples shown):
 
 - **SwiftLint**: `brew install swiftlint`
 - **swift-format**: `brew install swift-format`
-- **swift-doc**: `brew install swift-doc`
 - **Xcode 16+**: required for `xcodebuild` and running the app/tests.
 
 ### One-shot workflow (lint, format check, tests, docs)
@@ -128,13 +127,3 @@ else
   echo "warning: swift-format not installed, download from https://github.com/apple/swift-format"
 fi
 ```
-
-### Documentation Generation
-
-API documentation is generated using `swift-doc`. A helper script is provided and is used by `./scripts/dev-check.sh`.
-
-```sh
-./scripts/generate-docs.sh
-```
-
-The generated HTML documentation for `TableGlass` and `TableGlassKit` is placed in the `docs/` directory (already ignored by Git).
