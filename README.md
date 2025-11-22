@@ -29,6 +29,14 @@ Designed for macOS. Built using SwiftUI. It aims to be lightweight and easy to u
 - Extend mocks by adding new routes/behaviors rather than hand-rolling per-test stubs so new cases inherit logging and failure simulation.
 - Real database or tunnel-backed tests must be gated behind the `LocalDebug` configuration; CI should never talk to live databases.
 
+### Local PostgreSQL testing (LocalDebug only)
+
+- Add the `postgres-nio` SwiftPM dependency to the Xcode project so `PostgresDatabaseConnection` is available at build time.
+- Store the database password in the macOS Keychain as a generic password and pass its account/label via `TABLEGLASS_POSTGRES_PASSWORD_ID`; the driver pulls secrets through `KeychainDatabasePasswordResolver` and never logs them.
+- Set environment variables before running integration tests locally:
+  - `TABLEGLASS_POSTGRES_HOST`, `TABLEGLASS_POSTGRES_PORT` (default `5432`), `TABLEGLASS_POSTGRES_USER`, `TABLEGLASS_POSTGRES_DB`, `TABLEGLASS_POSTGRES_SCHEMA` (default `public`), `TABLEGLASS_POSTGRES_PASSWORD_ID`.
+- Run the LocalDebug-only integration test suite (guarded by `#if LOCALDEBUG && canImport(PostgresNIO)`) after duplicating the Debug configuration with a `LOCALDEBUG` Swift flag.
+
 ## Architecture Overview
 
 - `TableGlassKit`: Swift framework providing shared business logic and database abstractions.

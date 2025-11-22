@@ -14,8 +14,11 @@ final class AppEnvironment: ObservableObject {
     }
 
     static func makeDefault() -> AppEnvironment {
-        // TODO: Replace with a real implementation of ConnectionStore.
+        #if canImport(PostgresNIO) && LOCALDEBUG
+        AppEnvironment(dependencies: .localDebug())
+        #else
         AppEnvironment(dependencies: .empty)
+        #endif
     }
 
     static func makePreview() -> AppEnvironment {

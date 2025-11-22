@@ -156,6 +156,32 @@ extension DatabaseConnectionProvider {
     }
 }
 
+#if canImport(PostgresNIO)
+import PostgresNIO
+
+public extension DatabaseConnectionProvider {
+    func withPostgresNIO(
+        passwordResolver: some DatabasePasswordResolver = KeychainDatabasePasswordResolver()
+    ) -> DatabaseConnectionProvider {
+        registering(
+            .postgreSQL,
+            factory: AnyDatabaseConnectionFactory { profile in
+                PostgresDatabaseConnection(profile: profile, passwordResolver: passwordResolver)
+            }
+        )
+    }
+}
+#else
+public extension DatabaseConnectionProvider {
+    func withPostgresNIO(
+        passwordResolver: some DatabasePasswordResolver = KeychainDatabasePasswordResolver()
+    ) -> DatabaseConnectionProvider {
+        _ = passwordResolver
+        return self
+    }
+}
+#endif
+
 public actor PendingDatabaseConnection: DatabaseConnection {
     public let profile: ConnectionProfile
     private let error: DatabaseDriverUnavailable
