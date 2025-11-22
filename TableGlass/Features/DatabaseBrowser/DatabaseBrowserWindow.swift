@@ -10,14 +10,14 @@ struct DatabaseBrowserWindow: View {
         _viewModel = StateObject(wrappedValue: viewModel)
     }
 
-    var body: some View {
+var body: some View {
 #if os(macOS)
-        DatabaseBrowserTabView(viewModel: viewModel)
+    DatabaseBrowserTabView(viewModel: viewModel)
 #else
-        TabView(selection: $viewModel.selectedSessionID) {
-            ForEach(viewModel.sessions) { session in
-                DatabaseBrowserSessionView(
-                    session: session,
+    TabView(selection: $viewModel.selectedSessionID) {
+        ForEach(viewModel.sessions) { session in
+            DatabaseBrowserSessionView(
+                session: session,
                     onToggleReadOnly: { value in
                         viewModel.setReadOnly(value, for: session.id)
                     }
