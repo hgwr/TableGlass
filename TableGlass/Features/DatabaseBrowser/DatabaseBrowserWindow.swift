@@ -578,7 +578,7 @@ private struct DatabaseBrowserTabView: NSViewRepresentable {
             DatabaseBrowserSessionView(
                 session: session,
                 onConfirmAccessMode: { mode in
-                    await viewModel.setAccessMode(mode, for: session.id)
+                    await self.viewModel.setAccessMode(mode, for: session.id)
                 }
             )
         }
