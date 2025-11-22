@@ -135,6 +135,40 @@ public struct DatabaseTable: Sendable, Equatable {
     }
 }
 
+public struct DatabaseTableIdentifier: Sendable, Hashable {
+    public var catalog: String
+    public var namespace: String
+    public var name: String
+
+    public init(catalog: String, namespace: String, name: String) {
+        self.catalog = catalog
+        self.namespace = namespace
+        self.name = name
+    }
+}
+
+public struct DatabaseTableRow: Identifiable, Sendable, Equatable {
+    public var id: UUID
+    public var values: DatabaseQueryRow
+
+    public init(id: UUID = UUID(), values: DatabaseQueryRow) {
+        self.id = id
+        self.values = values
+    }
+}
+
+public struct DatabaseTablePage: Sendable, Equatable {
+    public var columns: [DatabaseColumn]
+    public var rows: [DatabaseTableRow]
+    public var hasMore: Bool
+
+    public init(columns: [DatabaseColumn], rows: [DatabaseTableRow], hasMore: Bool) {
+        self.columns = columns
+        self.rows = rows
+        self.hasMore = hasMore
+    }
+}
+
 public struct DatabaseColumn: Sendable, Equatable {
     public var name: String
     public var dataType: DatabaseColumnDataType

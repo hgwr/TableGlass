@@ -40,6 +40,7 @@ private struct DatabaseBrowserSessionView: View {
     let onConfirmAccessMode: @Sendable (DatabaseAccessMode) async -> Void
 
     @StateObject private var logViewModel: DatabaseSessionLogViewModel
+    @StateObject private var tableContentViewModel: DatabaseTableContentViewModel
     @State private var isShowingLog = false
     @State private var isShowingModeConfirmation = false
     @State private var modeConfirmation = ModeChangeConfirmationState()
@@ -54,6 +55,7 @@ private struct DatabaseBrowserSessionView: View {
             databaseName: session.databaseName,
             log: session.queryLog
         ))
+        _tableContentViewModel = StateObject(wrappedValue: session.makeTableContentViewModel())
     }
 
     var body: some View {
@@ -197,6 +199,17 @@ private struct DatabaseBrowserSessionView: View {
 
     private var detailView: some View {
         VStack(alignment: .leading, spacing: 12) {
+            detailHeader
+            Divider()
+            detailContent
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .padding()
+        .background(.background)
+    }
+
+    private var detailHeader: some View {
+        Group {
             if let node = session.selectedNode {
                 Text(verbatim: node.title)
                     .font(.title2)
@@ -215,11 +228,30 @@ private struct DatabaseBrowserSessionView: View {
                     .font(.title3)
                     .foregroundStyle(.secondary)
             }
-            Spacer()
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-        .padding()
-        .background(.background)
+    }
+
+    private var detailContent: some View {
+        Group {
+            if let node = session.selectedNode {
+                switch node.kind {
+                case .table(let catalog, let namespace, let name):
+                    DatabaseTableContentView(
+                        viewModel: tableContentViewModel,
+                        table: DatabaseTableIdentifier(catalog: catalog, namespace: namespace, name: name),
+                        columns: node.table?.columns ?? [],
+                        isReadOnly: session.isReadOnly
+                    )
+                    .accessibilityIdentifier(DatabaseBrowserAccessibility.tableDetail.rawValue)
+                default:
+                    Text("Select a table to view and edit its data.")
+                        .foregroundStyle(.secondary)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+                }
+            } else {
+                Spacer()
+            }
+        }
     }
 
     private func pathDescription(for node: DatabaseObjectTreeNode) -> String {
@@ -586,7 +618,7 @@ private struct DatabaseBrowserTabView: NSViewRepresentable {
 }
 #endif
 
-private enum DatabaseBrowserAccessibility: String {
+enum DatabaseBrowserAccessibility: String {
     case tabGroup = "databaseBrowser.tabGroup"
     case showLogButton = "databaseBrowser.showLogButton"
     case readOnlyToggle = "databaseBrowser.readOnlyToggle"
@@ -596,6 +628,10 @@ private enum DatabaseBrowserAccessibility: String {
     case expandAllProgress = "databaseBrowser.expandAllProgress"
     case collapseAllButton = "databaseBrowser.collapseAll"
     case sidebarList = "databaseBrowser.sidebarList"
+    case dataGrid = "databaseBrowser.table.grid"
+    case addRowButton = "databaseBrowser.table.addRow"
+    case deleteRowButton = "databaseBrowser.table.deleteRow"
+    case tableDetail = "databaseBrowser.table.detail"
     case modeChangeConfirmToggle = "databaseBrowser.modeChange.confirmToggle"
     case modeChangeConfirm = "databaseBrowser.modeChange.confirmButton"
     case modeChangeCancel = "databaseBrowser.modeChange.cancelButton"

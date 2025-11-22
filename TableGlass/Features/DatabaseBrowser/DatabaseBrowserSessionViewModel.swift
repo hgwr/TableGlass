@@ -21,6 +21,7 @@ final class DatabaseBrowserSessionViewModel: ObservableObject, Identifiable {
     private let metadataScope: DatabaseMetadataScope
     private let queryExecutor: (any DatabaseQueryExecutor)?
     private let modeController: (any DatabaseSessionModeControlling)?
+    private let tableDataService: any DatabaseTableDataService
 
     init(
         id: UUID = UUID(),
@@ -31,7 +32,8 @@ final class DatabaseBrowserSessionViewModel: ObservableObject, Identifiable {
         metadataScope: DatabaseMetadataScope = DatabaseMetadataScope(),
         queryExecutor: (any DatabaseQueryExecutor)? = nil,
         queryLog: DatabaseQueryLog = DatabaseQueryLog(),
-        modeController: (any DatabaseSessionModeControlling)? = nil
+        modeController: (any DatabaseSessionModeControlling)? = nil,
+        tableDataService: (any DatabaseTableDataService)? = nil
     ) {
         self.id = id
         self.databaseName = databaseName
@@ -49,6 +51,7 @@ final class DatabaseBrowserSessionViewModel: ObservableObject, Identifiable {
         self.modeController = modeController ?? InMemoryDatabaseSessionModeController(
             initialMode: isReadOnly ? .readOnly : .writable
         )
+        self.tableDataService = tableDataService ?? PreviewDatabaseTableDataService()
         self.treeNodes = []
     }
 
@@ -154,6 +157,10 @@ final class DatabaseBrowserSessionViewModel: ObservableObject, Identifiable {
         guard let selectedNodeID else { return nil }
         return findNode(with: selectedNodeID, in: treeNodes)
     }
+
+    func makeTableContentViewModel(pageSize: Int = 50) -> DatabaseTableContentViewModel {
+        DatabaseTableContentViewModel(tableDataService: tableDataService, pageSize: pageSize)
+    }
 }
 
 // MARK: - Query logging
@@ -242,7 +249,8 @@ private extension DatabaseBrowserSessionViewModel {
             let tableNodes = namespace.tables.sorted { $0.name < $1.name }.map { table in
                 DatabaseObjectTreeNode(
                     title: table.name,
-                    kind: .table(catalog: catalog, namespace: namespace.name, name: table.name)
+                    kind: .table(catalog: catalog, namespace: namespace.name, name: table.name),
+                    table: table
                 )
             }
             let viewNodes = namespace.views.sorted { $0.name < $1.name }.map { view in
