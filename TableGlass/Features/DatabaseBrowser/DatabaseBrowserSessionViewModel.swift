@@ -13,9 +13,11 @@ final class DatabaseBrowserSessionViewModel: ObservableObject, Identifiable {
     @Published private(set) var isRefreshing: Bool = false
     @Published private(set) var isExpandingAll: Bool = false
     @Published private(set) var loadError: String?
+    let queryLog: DatabaseQueryLog
 
     private let metadataProvider: any DatabaseMetadataProvider
     private let metadataScope: DatabaseMetadataScope
+    private let queryExecutor: (any DatabaseQueryExecutor)?
 
     init(
         id: UUID = UUID(),
@@ -23,14 +25,23 @@ final class DatabaseBrowserSessionViewModel: ObservableObject, Identifiable {
         status: DatabaseBrowserSessionStatus,
         isReadOnly: Bool,
         metadataProvider: some DatabaseMetadataProvider,
-        metadataScope: DatabaseMetadataScope = DatabaseMetadataScope()
+        metadataScope: DatabaseMetadataScope = DatabaseMetadataScope(),
+        queryExecutor: (any DatabaseQueryExecutor)? = nil,
+        queryLog: DatabaseQueryLog = DatabaseQueryLog()
     ) {
         self.id = id
         self.databaseName = databaseName
         self.status = status
         self.isReadOnly = isReadOnly
-        self.metadataProvider = metadataProvider
         self.metadataScope = metadataScope
+        self.queryLog = queryLog
+        let metadata = Self.wrapMetadataProvider(metadataProvider, log: queryLog)
+        self.metadataProvider = metadata.provider
+        if let queryExecutor {
+            self.queryExecutor = Self.wrapQueryExecutor(queryExecutor, log: queryLog)
+        } else {
+            self.queryExecutor = metadata.queryExecutor
+        }
         self.treeNodes = []
     }
 
@@ -56,6 +67,14 @@ final class DatabaseBrowserSessionViewModel: ObservableObject, Identifiable {
         }
 
         isRefreshing = false
+    }
+
+    @discardableResult
+    func execute(_ request: DatabaseQueryRequest) async throws -> DatabaseQueryResult {
+        guard let queryExecutor else {
+            throw DatabaseConnectionError.notConnected
+        }
+        return try await queryExecutor.execute(request)
     }
 
     @discardableResult
@@ -108,6 +127,47 @@ final class DatabaseBrowserSessionViewModel: ObservableObject, Identifiable {
     var selectedNode: DatabaseObjectTreeNode? {
         guard let selectedNodeID else { return nil }
         return findNode(with: selectedNodeID, in: treeNodes)
+    }
+}
+
+// MARK: - Query logging
+
+private extension DatabaseBrowserSessionViewModel {
+    static func wrapMetadataProvider(
+        _ provider: any DatabaseMetadataProvider,
+        log: DatabaseQueryLog
+    ) -> (provider: any DatabaseMetadataProvider, queryExecutor: (any DatabaseQueryExecutor)?) {
+        if let connection = provider as? any DatabaseConnection {
+            let loggedConnection = wrapConnection(connection, log: log)
+            return (loggedConnection, loggedConnection)
+        }
+
+        if let executor = provider as? any DatabaseQueryExecutor {
+            let loggedExecutor = wrapQueryExecutor(executor, log: log)
+            return (provider, loggedExecutor)
+        }
+
+        return (provider, nil)
+    }
+
+    static func wrapConnection(
+        _ connection: any DatabaseConnection,
+        log: DatabaseQueryLog
+    ) -> any DatabaseConnection {
+        if connection is any DatabaseQueryLogging {
+            return connection
+        }
+        return LoggingDatabaseConnection(base: connection, log: log)
+    }
+
+    static func wrapQueryExecutor(
+        _ executor: any DatabaseQueryExecutor,
+        log: DatabaseQueryLog
+    ) -> any DatabaseQueryExecutor {
+        if executor is any DatabaseQueryLogging {
+            return executor
+        }
+        return LoggingDatabaseQueryExecutor(base: executor, log: log)
     }
 }
 

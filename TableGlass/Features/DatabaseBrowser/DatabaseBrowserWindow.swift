@@ -10,15 +10,14 @@ struct DatabaseBrowserWindow: View {
         _viewModel = StateObject(wrappedValue: viewModel)
     }
 
-    var body: some View {
+var body: some View {
 #if os(macOS)
-        DatabaseBrowserTabView(viewModel: viewModel)
+    DatabaseBrowserTabView(viewModel: viewModel)
 #else
-        TabView(selection: $viewModel.selectedSessionID) {
-            ForEach(viewModel.sessions) { session in
-                DatabaseBrowserSessionView(
-                    session: session,
-                    onShowLog: { /* Placeholder for log presentation */ },
+    TabView(selection: $viewModel.selectedSessionID) {
+        ForEach(viewModel.sessions) { session in
+            DatabaseBrowserSessionView(
+                session: session,
                     onToggleReadOnly: { value in
                         viewModel.setReadOnly(value, for: session.id)
                     }
@@ -37,8 +36,19 @@ struct DatabaseBrowserWindow: View {
 
 private struct DatabaseBrowserSessionView: View {
     @ObservedObject var session: DatabaseBrowserSessionViewModel
-    let onShowLog: () -> Void
     let onToggleReadOnly: (Bool) -> Void
+
+    @StateObject private var logViewModel: DatabaseSessionLogViewModel
+    @State private var isShowingLog = false
+
+    init(session: DatabaseBrowserSessionViewModel, onToggleReadOnly: @escaping (Bool) -> Void) {
+        _session = ObservedObject(initialValue: session)
+        self.onToggleReadOnly = onToggleReadOnly
+        _logViewModel = StateObject(wrappedValue: DatabaseSessionLogViewModel(
+            databaseName: session.databaseName,
+            log: session.queryLog
+        ))
+    }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -51,6 +61,9 @@ private struct DatabaseBrowserSessionView: View {
             }
         }
         .frame(minWidth: 760, minHeight: 520)
+        .sheet(isPresented: $isShowingLog) {
+            DatabaseSessionLogView(viewModel: logViewModel)
+        }
         .task {
             await session.loadIfNeeded()
         }
@@ -71,7 +84,7 @@ private struct DatabaseBrowserSessionView: View {
             }
             Spacer()
             Button("Show Log") {
-                onShowLog()
+                isShowingLog = true
             }
             .buttonStyle(.bordered)
             .accessibilityIdentifier(DatabaseBrowserAccessibility.showLogButton.rawValue)
@@ -426,7 +439,6 @@ private struct DatabaseBrowserTabView: NSViewRepresentable {
         private func makeSessionView(for session: DatabaseBrowserSessionViewModel) -> DatabaseBrowserSessionView {
             DatabaseBrowserSessionView(
                 session: session,
-                onShowLog: { /* Placeholder for log presentation */ },
                 onToggleReadOnly: { value in
                     self.viewModel.setReadOnly(value, for: session.id)
                 }
