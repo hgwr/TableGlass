@@ -9,6 +9,32 @@ public protocol DatabaseMetadataProvider: Sendable {
     func metadata(scope: DatabaseMetadataScope) async throws -> DatabaseSchema
 }
 
+public enum DatabaseAccessMode: Sendable, Equatable {
+    case readOnly
+    case writable
+}
+
+public protocol DatabaseSessionModeControlling: Sendable {
+    var currentMode: DatabaseAccessMode { get async }
+    func setMode(_ mode: DatabaseAccessMode) async throws
+}
+
+public actor InMemoryDatabaseSessionModeController: DatabaseSessionModeControlling {
+    private var mode: DatabaseAccessMode
+
+    public init(initialMode: DatabaseAccessMode = .readOnly) {
+        self.mode = initialMode
+    }
+
+    public var currentMode: DatabaseAccessMode {
+        mode
+    }
+
+    public func setMode(_ mode: DatabaseAccessMode) async throws {
+        self.mode = mode
+    }
+}
+
 public struct DatabaseTransactionOptions: Sendable, Equatable {
     public var isolationLevel: DatabaseIsolationLevel?
 

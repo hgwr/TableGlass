@@ -97,6 +97,46 @@ struct DatabaseBrowserSessionViewModelTests {
         let recorded = await connection.recordedRequests()
         #expect(recorded == [request])
     }
+
+    @Test
+    func setAccessModeUpdatesStateAsynchronously() async throws {
+        let controller = RecordingModeController(initialMode: .readOnly)
+        let session = DatabaseBrowserSessionViewModel(
+            databaseName: "preview",
+            status: .readOnly,
+            isReadOnly: true,
+            metadataProvider: PreviewDatabaseMetadataProvider(schema: .previewBrowserSchema),
+            modeController: controller
+        )
+
+        await session.setAccessMode(.writable)
+
+        let recordedModes = await controller.recordedModes()
+        #expect(recordedModes == [.writable])
+        #expect(session.isReadOnly == false)
+        #expect(session.status == .online)
+        #expect(session.modeError == nil)
+        #expect(session.isUpdatingMode == false)
+    }
+
+    @Test
+    func modeChangeConfirmationRequiresAcknowledgement() {
+        var state = ModeChangeConfirmationState()
+        state.prepare(for: .writable)
+
+        #expect(state.canConfirm == false)
+
+        state.hasAcknowledged = true
+        #expect(state.canConfirm == true)
+
+        state.beginApplying()
+        #expect(state.canConfirm == false)
+
+        state.finish()
+        #expect(state.pendingMode == nil)
+        #expect(state.hasAcknowledged == false)
+        #expect(state.isApplying == false)
+    }
 }
 
 private actor LoggingStubConnection: DatabaseConnection {
@@ -128,5 +168,28 @@ private actor LoggingStubConnection: DatabaseConnection {
 
     func recordedRequests() async -> [DatabaseQueryRequest] {
         recorded
+    }
+}
+
+private actor RecordingModeController: DatabaseSessionModeControlling {
+    private var mode: DatabaseAccessMode
+    private var updates: [DatabaseAccessMode] = []
+
+    init(initialMode: DatabaseAccessMode) {
+        self.mode = initialMode
+    }
+
+    var currentMode: DatabaseAccessMode {
+        mode
+    }
+
+    func setMode(_ mode: DatabaseAccessMode) async throws {
+        try await Task.sleep(for: .milliseconds(10))
+        self.mode = mode
+        updates.append(mode)
+    }
+
+    func recordedModes() async -> [DatabaseAccessMode] {
+        updates
     }
 }
