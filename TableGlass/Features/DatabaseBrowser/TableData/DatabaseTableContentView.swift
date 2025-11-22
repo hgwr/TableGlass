@@ -16,16 +16,13 @@ struct DatabaseTableContentView: View {
                 banner(for: error)
             }
             content
-            if viewModel.hasMorePages && !viewModel.rows.isEmpty {
-                loadMoreRow
-            }
         }
         .padding(.horizontal, 8)
         .padding(.vertical, 4)
         .task {
             await viewModel.loadIfNeeded(for: table, columns: columns)
         }
-        .onChange(of: table) { newValue in
+        .onChange(of: table) { _, newValue in
             Task { await viewModel.loadIfNeeded(for: newValue, columns: columns) }
         }
         .alert("Delete selected rows?", isPresented: $isShowingDeleteConfirmation) {
@@ -94,27 +91,86 @@ struct DatabaseTableContentView: View {
     }
 
     private var tableView: some View {
-        Table(viewModel.rows, selection: $viewModel.selection) {
-            dynamicColumns()
+        ScrollView([.vertical, .horizontal]) {
+            VStack(alignment: .leading, spacing: 0) {
+                headerRow
+                    .padding(.vertical, 6)
+                    .padding(.horizontal, 4)
 
-            TableColumn("Status", content: statusCell)
-                .width(90)
+                Divider()
 
-            TableColumn("Actions", content: actionsCell)
-                .width(160)
+                LazyVStack(alignment: .leading, spacing: 6) {
+                    ForEach(viewModel.rows) { row in
+                        dataRow(for: row)
+                    }
+
+                    if viewModel.hasMorePages && !viewModel.rows.isEmpty {
+                        loadMoreRow
+                    }
+                }
+                .padding(.vertical, 6)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
         }
-        .tableStyle(.inset)
         .accessibilityIdentifier(DatabaseBrowserAccessibility.dataGrid.rawValue)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
     }
 
-    @TableColumnBuilder
-    private func dynamicColumns() -> some TableColumnContent<DatabaseTableContentViewModel.EditableTableRow> {
-        for column in columns {
-            TableColumn(column.name) { (row: DatabaseTableContentViewModel.EditableTableRow) in
-                cell(for: row, column: column)
+    private var headerRow: some View {
+        HStack(alignment: .center, spacing: 12) {
+            ForEach(viewModel.columns, id: \.name) { column in
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(column.name)
+                        .font(.caption)
+                        .fontWeight(.semibold)
+                    Text(column.dataTypeDescription)
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                }
+                .frame(minWidth: 140, alignment: .leading)
             }
-            .width(min: 120)
+
+            Text("Status")
+                .font(.caption)
+                .fontWeight(.semibold)
+                .frame(width: 110, alignment: .leading)
+
+            Text("Actions")
+                .font(.caption)
+                .fontWeight(.semibold)
+                .frame(width: 180, alignment: .leading)
+        }
+    }
+
+    private func dataRow(for row: DatabaseTableContentViewModel.EditableTableRow) -> some View {
+        HStack(alignment: .top, spacing: 12) {
+            ForEach(viewModel.columns, id: \.name) { column in
+                cell(for: row, column: column)
+                    .frame(minWidth: 140, alignment: .leading)
+            }
+
+            statusCell(for: row)
+                .frame(width: 110, alignment: .leading)
+
+            actionsCell(for: row)
+                .frame(width: 180, alignment: .leading)
+        }
+        .padding(.vertical, 6)
+        .padding(.horizontal, 4)
+        .background(
+            RoundedRectangle(cornerRadius: 6)
+                .fill(row.error != nil ? Color.red.opacity(0.06) : Color.clear)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 6)
+                        .stroke(
+                            viewModel.selection.contains(row.id) ? Color.accentColor.opacity(0.5) : Color.clear,
+                            lineWidth: 1
+                        )
+                )
+        )
+        .contentShape(Rectangle())
+        .onTapGesture {
+            toggleSelection(for: row.id)
         }
     }
 
@@ -131,6 +187,9 @@ struct DatabaseTableContentView: View {
                 Label("Saved", systemImage: "checkmark.circle")
                     .foregroundStyle(.green)
             }
+        }
+        .task {
+            await viewModel.prefetchNextPageIfNeeded(currentRowID: row.id)
         }
     }
 
@@ -150,6 +209,14 @@ struct DatabaseTableContentView: View {
                 isShowingDeleteConfirmation = true
             }
             .disabled(isReadOnly || row.isSaving)
+        }
+    }
+
+    private func toggleSelection(for id: DatabaseTableContentViewModel.EditableTableRow.ID) {
+        if viewModel.selection.contains(id) {
+            viewModel.selection.remove(id)
+        } else {
+            viewModel.selection.insert(id)
         }
     }
 
@@ -188,15 +255,23 @@ struct DatabaseTableContentView: View {
     private var loadMoreRow: some View {
         HStack {
             Spacer()
-            Button {
-                Task { await viewModel.loadNextPage() }
-            } label: {
-                Label("Load More", systemImage: "ellipsis")
+            if viewModel.isLoadingPage {
+                ProgressView("Loading next page…")
+                    .controlSize(.small)
+            } else {
+                Button {
+                    Task { await viewModel.loadNextPage() }
+                } label: {
+                    Label("Load More", systemImage: "ellipsis")
+                }
+                .disabled(viewModel.isLoadingPage)
             }
-            .disabled(viewModel.isLoadingPage)
             Spacer()
         }
         .padding(.vertical, 4)
+        .onAppear {
+            Task { await viewModel.loadNextPage() }
+        }
     }
 }
 

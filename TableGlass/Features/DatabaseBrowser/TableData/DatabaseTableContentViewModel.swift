@@ -154,6 +154,18 @@ final class DatabaseTableContentViewModel: ObservableObject {
         rows[index].cells[column]?.text = text
     }
 
+    func prefetchNextPageIfNeeded(currentRowID: EditableTableRow.ID) async {
+        guard !isLoadingPage, hasMorePages,
+              let index = rows.firstIndex(where: { $0.id == currentRowID })
+        else { return }
+
+        let prefetchWindow = min(max(pageSize / 4, 2), 10)
+        let thresholdIndex = max(rows.count - prefetchWindow, 0)
+        guard rows.count > prefetchWindow, index >= thresholdIndex else { return }
+
+        await loadNextPage()
+    }
+
     private func resetState(for table: DatabaseTableIdentifier, columns: [DatabaseColumn]) {
         activeTable = table
         self.columns = columns

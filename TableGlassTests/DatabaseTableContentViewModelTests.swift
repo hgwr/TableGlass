@@ -1,3 +1,4 @@
+import Foundation
 import TableGlassKit
 import Testing
 
@@ -26,6 +27,42 @@ struct DatabaseTableContentViewModelTests {
         #expect(viewModel.hasMorePages == false)
         let snapshot = await service.snapshot(for: tableID)
         #expect(snapshot.count == 1)
+    }
+
+    @Test
+    func prefetchesNextPageWhenApproachingEnd() async throws {
+        let pageSize = 4
+        let firstPage = (1...pageSize).map { index in
+            DatabaseTableRow(values: DatabaseQueryRow(values: [
+                "id": .int(Int64(index)),
+                "name": .string("Name \(index)"),
+            ]))
+        }
+        let secondPage = ((pageSize + 1)...(pageSize * 2)).map { index in
+            DatabaseTableRow(values: DatabaseQueryRow(values: [
+                "id": .int(Int64(index)),
+                "name": .string("Name \(index)"),
+            ]))
+        }
+        let service = PagingTableDataService(columns: columns, pages: [firstPage, secondPage])
+        let viewModel = DatabaseTableContentViewModel(tableDataService: service, pageSize: pageSize)
+
+        await viewModel.loadIfNeeded(for: tableID, columns: columns)
+        try await Task.sleep(for: .milliseconds(10))
+
+        #expect(await service.fetchedPages == [0])
+
+        guard let triggerRow = viewModel.rows.suffix(2).first else {
+            Issue.record("Expected at least two rows to trigger prefetch")
+            return
+        }
+
+        await viewModel.prefetchNextPageIfNeeded(currentRowID: triggerRow.id)
+        try await Task.sleep(for: .milliseconds(10))
+
+        let fetchedPages = await service.fetchedPages
+        #expect(fetchedPages.contains(1))
+        #expect(viewModel.rows.count == pageSize * 2)
     }
 
     @Test
@@ -204,6 +241,38 @@ private actor MockTableDataService: DatabaseTableDataService {
     func snapshot(for table: DatabaseTableIdentifier) async -> [DatabaseTableRow] {
         storage[table]?.rows ?? []
     }
+}
+
+private actor PagingTableDataService: DatabaseTableDataService {
+    private let columns: [DatabaseColumn]
+    private let pages: [[DatabaseTableRow]]
+    private(set) var fetchedPages: [Int] = []
+
+    init(columns: [DatabaseColumn], pages: [[DatabaseTableRow]]) {
+        self.columns = columns
+        self.pages = pages
+    }
+
+    func fetchPage(for table: DatabaseTableIdentifier, page: Int, pageSize: Int) async throws -> DatabaseTablePage {
+        fetchedPages.append(page)
+        let rows = page < pages.count ? pages[page] : []
+        let hasMore = page + 1 < pages.count
+        return DatabaseTablePage(columns: columns, rows: rows, hasMore: hasMore)
+    }
+
+    func updateRow(
+        for table: DatabaseTableIdentifier,
+        row: DatabaseTableRow,
+        changedValues: [String: DatabaseQueryValue]
+    ) async throws -> DatabaseTableRow {
+        row
+    }
+
+    func insertRow(for table: DatabaseTableIdentifier, values: [String: DatabaseQueryValue]) async throws -> DatabaseTableRow {
+        DatabaseTableRow(values: DatabaseQueryRow(values: values))
+    }
+
+    func deleteRow(for table: DatabaseTableIdentifier, row: DatabaseTableRow) async throws { }
 }
 
 private actor FailingDeleteService: DatabaseTableDataService {
