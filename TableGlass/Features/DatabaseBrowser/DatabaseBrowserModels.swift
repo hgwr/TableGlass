@@ -56,6 +56,7 @@ struct DatabaseObjectTreeNode: Identifiable, Hashable, Sendable {
     var isExpanded: Bool
     var isLoading: Bool
     var pendingChildren: PendingChildren?
+    var table: DatabaseTable?
 
     init(
         id: UUID = UUID(),
@@ -64,7 +65,8 @@ struct DatabaseObjectTreeNode: Identifiable, Hashable, Sendable {
         children: [DatabaseObjectTreeNode] = [],
         isExpanded: Bool = false,
         isLoading: Bool = false,
-        pendingChildren: PendingChildren? = nil
+        pendingChildren: PendingChildren? = nil,
+        table: DatabaseTable? = nil
     ) {
         self.id = id
         self.title = title
@@ -73,6 +75,7 @@ struct DatabaseObjectTreeNode: Identifiable, Hashable, Sendable {
         self.isExpanded = isExpanded
         self.isLoading = isLoading
         self.pendingChildren = pendingChildren
+        self.table = table
     }
 
     static func == (lhs: DatabaseObjectTreeNode, rhs: DatabaseObjectTreeNode) -> Bool {

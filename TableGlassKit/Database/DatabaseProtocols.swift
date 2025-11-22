@@ -55,6 +55,17 @@ public protocol DatabaseTransaction: DatabaseQueryExecutor {
     func rollback() async
 }
 
+public protocol DatabaseTableDataService: Sendable {
+    func fetchPage(for table: DatabaseTableIdentifier, page: Int, pageSize: Int) async throws -> DatabaseTablePage
+    func updateRow(
+        for table: DatabaseTableIdentifier,
+        row: DatabaseTableRow,
+        changedValues: [String: DatabaseQueryValue]
+    ) async throws -> DatabaseTableRow
+    func insertRow(for table: DatabaseTableIdentifier, values: [String: DatabaseQueryValue]) async throws -> DatabaseTableRow
+    func deleteRow(for table: DatabaseTableIdentifier, row: DatabaseTableRow) async throws
+}
+
 public protocol DatabaseConnection: DatabaseQueryExecutor, DatabaseMetadataProvider {
     var profile: ConnectionProfile { get }
     func connect() async throws
