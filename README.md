@@ -37,3 +37,105 @@ Designed for macOS. Built using SwiftUI. It aims to be lightweight and easy to u
     Schema metadata models live here.
     Placeholder factories for PostgresNIO/MySQLNIO/sqlite3 stay until driver integrations land.
 - `TableGlass`: SwiftUI app target that renders the UI and injects `TableGlassKit` services.
+
+## Development
+
+This section outlines how to set up your development environment to contribute to TableGlass.
+
+### Prerequisites
+
+You will need the following tools installed. The easiest way to install them is via [Homebrew](https://brew.sh/).
+
+- **SwiftLint**: For enforcing Swift style and conventions.
+  ```sh
+  brew install swiftlint
+  ```
+- **SwiftFormat**: For formatting Swift code.
+  ```sh
+  brew install swift-format
+  ```
+- **swift-doc**: For generating API documentation.
+  ```sh
+  brew install swift-doc
+  ```
+
+### Building and Testing
+
+You can build and run tests from the command line using `xcodebuild`.
+
+- **Build the project:**
+  ```sh
+  xcodebuild build -scheme TableGlass -destination 'platform=macOS'
+  ```
+- **Run unit and UI tests:**
+  ```sh
+  xcodebuild test -scheme TableGlass -destination 'platform=macOS'
+  ```
+
+### Linting and Formatting
+
+This project uses SwiftLint and SwiftFormat to maintain a consistent code style.
+
+#### Manual Formatting
+
+To format the codebase manually, run the following command from the project root:
+
+```sh
+swift-format -i -r .
+```
+
+To automatically correct linting issues where possible:
+
+```sh
+swiftlint --fix
+```
+
+#### Xcode Build Phase Integration (Recommended)
+
+To get real-time feedback in Xcode, it is recommended to add build phases that run these tools.
+
+1.  In the Xcode Project Navigator, select the `TableGlass` project.
+2.  Select the `TableGlass` target and navigate to the `Build Phases` tab.
+3.  Click the `+` icon and select `New Run Script Phase`.
+4.  Add a phase for SwiftLint and another for SwiftFormat before the `Compile Sources` phase.
+
+**SwiftLint Run Script:**
+
+```sh
+export PATH="$PATH:/opt/homebrew/bin"
+
+if which swiftlint > /dev/null; then
+  swiftlint
+else
+  echo "warning: SwiftLint not installed, download from https://github.com/realm/swiftlint"
+fi
+```
+
+**SwiftFormat Check Run Script:**
+
+This script will fail the build if formatting is incorrect, but it will not modify files.
+
+```sh
+export PATH="$PATH:/opt/homebrew/bin"
+
+if which swift-format > /dev/null; then
+  swift-format --lint -r TableGlass/ TableGlassKit/
+else
+  echo "warning: swift-format not installed, download from https://github.com/apple/swift-format"
+fi
+```
+
+### Documentation Generation
+
+API documentation is generated using `swift-doc`. A helper script is provided.
+
+1.  **Make the script executable** (only needs to be done once):
+    ```sh
+    chmod +x generate-docs.sh
+    ```
+2.  **Run the script:**
+    ```sh
+    ./generate-docs.sh
+    ```
+
+The generated HTML documentation will be placed in the `docs/` directory, which is ignored by Git.
