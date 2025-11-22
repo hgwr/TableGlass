@@ -1,3 +1,4 @@
+import Combine
 import Foundation
 import TableGlassKit
 
@@ -20,10 +21,10 @@ final class DatabaseSessionLogViewModel: ObservableObject {
     private let formatter: DatabaseSessionLogFormatter
     private var streamTask: Task<Void, Never>?
 
-    init(databaseName: String, log: DatabaseQueryLog, formatter: DatabaseSessionLogFormatter = .init()) {
+    init(databaseName: String, log: DatabaseQueryLog, formatter: DatabaseSessionLogFormatter? = nil) {
         self.databaseName = databaseName
         self.log = log
-        self.formatter = formatter
+        self.formatter = formatter ?? DatabaseSessionLogFormatter()
         entries = []
         streamTask = Task { await observeLog() }
     }
@@ -57,7 +58,8 @@ final class DatabaseSessionLogViewModel: ObservableObject {
     }
 
     private func observeLog() async {
-        for await snapshot in log.entriesStream() {
+        let stream = await log.entriesStream()
+        for await snapshot in stream {
             await MainActor.run {
                 self.entries = snapshot
             }

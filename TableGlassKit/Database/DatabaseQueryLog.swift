@@ -79,11 +79,11 @@ public actor DatabaseQueryLog {
 /// Marker protocol that identifies executors and connections that already append to a query log.
 public protocol DatabaseQueryLogging: Sendable {}
 
-public struct LoggingDatabaseQueryExecutor<Base: DatabaseQueryExecutor>: DatabaseQueryExecutor {
-    private let base: Base
+public struct LoggingDatabaseQueryExecutor: DatabaseQueryExecutor, DatabaseQueryLogging {
+    private let base: any DatabaseQueryExecutor
     private let log: DatabaseQueryLog
 
-    public init(base: Base, log: DatabaseQueryLog) {
+    public init(base: any DatabaseQueryExecutor, log: DatabaseQueryLog) {
         self.base = base
         self.log = log
     }
@@ -100,13 +100,11 @@ public struct LoggingDatabaseQueryExecutor<Base: DatabaseQueryExecutor>: Databas
     }
 }
 
-extension LoggingDatabaseQueryExecutor: DatabaseQueryLogging {}
-
-public struct LoggingDatabaseTransaction<Base: DatabaseTransaction>: DatabaseTransaction {
-    private var base: Base
+public struct LoggingDatabaseTransaction: DatabaseTransaction, DatabaseQueryLogging {
+    private let base: any DatabaseTransaction
     private let log: DatabaseQueryLog
 
-    public init(base: Base, log: DatabaseQueryLog) {
+    public init(base: any DatabaseTransaction, log: DatabaseQueryLog) {
         self.base = base
         self.log = log
     }
@@ -120,17 +118,22 @@ public struct LoggingDatabaseTransaction<Base: DatabaseTransaction>: DatabaseTra
     }
 
     public func execute(_ request: DatabaseQueryRequest) async throws -> DatabaseQueryResult {
-        try await LoggingDatabaseQueryExecutor(base: base, log: log).execute(request)
+        do {
+            let result = try await base.execute(request)
+            await log.append(sql: request.sql, outcome: .success)
+            return result
+        } catch {
+            await log.append(sql: request.sql, outcome: .failure(error.localizedDescription))
+            throw error
+        }
     }
 }
 
-extension LoggingDatabaseTransaction: DatabaseQueryLogging {}
-
-public struct LoggingDatabaseConnection<Base: DatabaseConnection>: DatabaseConnection {
-    private var base: Base
+public struct LoggingDatabaseConnection: DatabaseConnection, DatabaseQueryLogging {
+    private let base: any DatabaseConnection
     private let log: DatabaseQueryLog
 
-    public init(base: Base, log: DatabaseQueryLog) {
+    public init(base: any DatabaseConnection, log: DatabaseQueryLog) {
         self.base = base
         self.log = log
     }
@@ -151,6 +154,9 @@ public struct LoggingDatabaseConnection<Base: DatabaseConnection>: DatabaseConne
 
     public func beginTransaction(options: DatabaseTransactionOptions) async throws -> any DatabaseTransaction {
         let transaction = try await base.beginTransaction(options: options)
+        if transaction is any DatabaseQueryLogging {
+            return transaction
+        }
         return LoggingDatabaseTransaction(base: transaction, log: log)
     }
 
@@ -159,11 +165,16 @@ public struct LoggingDatabaseConnection<Base: DatabaseConnection>: DatabaseConne
     }
 
     public func execute(_ request: DatabaseQueryRequest) async throws -> DatabaseQueryResult {
-        try await LoggingDatabaseQueryExecutor(base: base, log: log).execute(request)
+        do {
+            let result = try await base.execute(request)
+            await log.append(sql: request.sql, outcome: .success)
+            return result
+        } catch {
+            await log.append(sql: request.sql, outcome: .failure(error.localizedDescription))
+            throw error
+        }
     }
 }
-
-extension LoggingDatabaseConnection: DatabaseQueryLogging {}
 
 public extension DatabaseQueryLog {
     static func preview(with entries: [DatabaseQueryLogEntry]) -> DatabaseQueryLog {
