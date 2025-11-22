@@ -44,20 +44,24 @@ This section outlines how to set up your development environment to contribute t
 
 ### Prerequisites
 
-You will need the following tools installed. The easiest way to install them is via [Homebrew](https://brew.sh/).
+Install the following tools (Homebrew examples shown):
 
-- **SwiftLint**: For enforcing Swift style and conventions.
-  ```sh
-  brew install swiftlint
-  ```
-- **SwiftFormat**: For formatting Swift code.
-  ```sh
-  brew install swift-format
-  ```
+- **SwiftLint**: `brew install swiftlint`
+- **swift-format**: `brew install swift-format`
+- **swift-doc**: `brew install swift-doc`
+- **Xcode 16+**: required for `xcodebuild` and running the app/tests.
+
+### One-shot workflow (lint, format check, tests, docs)
+
+Run all project checks locally (what CI will run):
+
+```sh
+./scripts/dev-check.sh
+```
+
+This verifies SwiftLint, swift-format lint, the `TableGlass` scheme tests, and regenerates HTML docs under `docs/` (gitignored).
 
 ### Building and Testing
-
-You can build and run tests from the command line using `xcodebuild`.
 
 - **Build the project:**
   ```sh
@@ -67,33 +71,37 @@ You can build and run tests from the command line using `xcodebuild`.
   ```sh
   xcodebuild test -scheme TableGlass -destination 'platform=macOS'
   ```
+  The project is Xcode-based, so `swift test` is not currently available.
 
 ### Linting and Formatting
 
-This project uses SwiftLint and SwiftFormat to maintain a consistent code style.
+This project uses SwiftLint and swift-format to maintain a consistent code style.
 
-#### Manual Formatting
-
-To format the codebase manually, run the following command from the project root:
-
-```sh
-swift-format -i -r .
-```
-
-To automatically correct linting issues where possible:
-
-```sh
-swiftlint --fix
-```
+- **Lint check:**
+  ```sh
+  swiftlint lint
+  ```
+- **Auto-correct lint issues where possible:**
+  ```sh
+  swiftlint --fix
+  ```
+- **Format check (no writes):**
+  ```sh
+  swift-format lint -r TableGlass TableGlassKit TableGlassTests TableGlassUITests
+  ```
+- **Apply formatting in place:**
+  ```sh
+  swift-format format -i -r TableGlass TableGlassKit TableGlassTests TableGlassUITests
+  ```
 
 #### Xcode Build Phase Integration (Recommended)
 
-To get real-time feedback in Xcode, it is recommended to add build phases that run these tools.
+To get real-time feedback in Xcode, add build phases that run these tools:
 
-1.  In the Xcode Project Navigator, select the `TableGlass` project.
-2.  Select the `TableGlass` target and navigate to the `Build Phases` tab.
-3.  Click the `+` icon and select `New Run Script Phase`.
-4.  Add a phase for SwiftLint and another for SwiftFormat before the `Compile Sources` phase.
+1. In the Xcode Project Navigator, select the `TableGlass` project.
+2. Select the `TableGlass` target and navigate to the `Build Phases` tab.
+3. Click the `+` icon and select `New Run Script Phase`.
+4. Add a phase for SwiftLint and another for swift-format before the `Compile Sources` phase.
 
 **SwiftLint Run Script:**
 
@@ -103,11 +111,11 @@ export PATH="$PATH:/opt/homebrew/bin"
 if which swiftlint > /dev/null; then
   swiftlint
 else
-  echo "warning: SwiftLint not installed, download from https://github.com/realm/swiftlint"
+  echo "warning: SwiftLint not installed, download from https://github.com/realm/SwiftLint"
 fi
 ```
 
-**SwiftFormat Check Run Script:**
+**swift-format Check Run Script:**
 
 This script will fail the build if formatting is incorrect, but it will not modify files.
 
@@ -115,7 +123,7 @@ This script will fail the build if formatting is incorrect, but it will not modi
 export PATH="$PATH:/opt/homebrew/bin"
 
 if which swift-format > /dev/null; then
-  swift-format lint -r TableGlass/ TableGlassKit/
+  swift-format lint -r TableGlass TableGlassKit TableGlassTests TableGlassUITests
 else
   echo "warning: swift-format not installed, download from https://github.com/apple/swift-format"
 fi
@@ -123,15 +131,10 @@ fi
 
 ### Documentation Generation
 
-API documentation is generated using `swift-doc`. A helper script is provided.
+API documentation is generated using `swift-doc`. A helper script is provided and is used by `./scripts/dev-check.sh`.
 
-1.  **Make the script executable** (only needs to be done once):
-    ```sh
-    chmod +x generate-docs.sh
-    ```
-2.  **Run the script:**
-    ```sh
-    ./generate-docs.sh
-    ```
+```sh
+./scripts/generate-docs.sh
+```
 
-The generated HTML documentation will be placed in the `docs/` directory, which is ignored by Git.
+The generated HTML documentation for `TableGlass` and `TableGlassKit` is placed in the `docs/` directory (already ignored by Git).
