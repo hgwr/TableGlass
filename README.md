@@ -37,3 +37,93 @@ Designed for macOS. Built using SwiftUI. It aims to be lightweight and easy to u
     Schema metadata models live here.
     Placeholder factories for PostgresNIO/MySQLNIO/sqlite3 stay until driver integrations land.
 - `TableGlass`: SwiftUI app target that renders the UI and injects `TableGlassKit` services.
+
+## Development
+
+This section outlines how to set up your development environment to contribute to TableGlass.
+
+### Prerequisites
+
+Install the following tools (Homebrew examples shown):
+
+- **SwiftLint**: `brew install swiftlint`
+- **swift-format**: `brew install swift-format`
+- **Xcode 16+**: required for `xcodebuild` and running the app/tests.
+
+### One-shot workflow (lint, format check, tests, docs)
+
+Run all project checks locally (what CI will run):
+
+```sh
+./scripts/dev-check.sh
+```
+
+This verifies SwiftLint, swift-format lint, the `TableGlass` scheme tests, and regenerates HTML docs under `docs/` (gitignored).
+
+### Building and Testing
+
+- **Build the project:**
+  ```sh
+  xcodebuild build -scheme TableGlass -destination 'platform=macOS'
+  ```
+- **Run unit and UI tests:**
+  ```sh
+  xcodebuild test -scheme TableGlass -destination 'platform=macOS'
+  ```
+  The project is Xcode-based, so `swift test` is not currently available.
+
+### Linting and Formatting
+
+This project uses SwiftLint and swift-format to maintain a consistent code style.
+
+- **Lint check:**
+  ```sh
+  swiftlint lint
+  ```
+- **Auto-correct lint issues where possible:**
+  ```sh
+  swiftlint --fix
+  ```
+- **Format check (no writes):**
+  ```sh
+  swift-format lint -r TableGlass TableGlassKit TableGlassTests TableGlassUITests
+  ```
+- **Apply formatting in place:**
+  ```sh
+  swift-format format -i -r TableGlass TableGlassKit TableGlassTests TableGlassUITests
+  ```
+
+#### Xcode Build Phase Integration (Recommended)
+
+To get real-time feedback in Xcode, add build phases that run these tools:
+
+1. In the Xcode Project Navigator, select the `TableGlass` project.
+2. Select the `TableGlass` target and navigate to the `Build Phases` tab.
+3. Click the `+` icon and select `New Run Script Phase`.
+4. Add a phase for SwiftLint and another for swift-format before the `Compile Sources` phase.
+
+**SwiftLint Run Script:**
+
+```sh
+export PATH="$PATH:/opt/homebrew/bin"
+
+if which swiftlint > /dev/null; then
+  swiftlint
+else
+  echo "warning: SwiftLint not installed, download from https://github.com/realm/SwiftLint"
+fi
+```
+
+**swift-format Check Run Script:**
+
+This script will fail the build if formatting is incorrect, but it will not modify files.
+
+```sh
+export PATH="$PATH:/opt/homebrew/bin"
+
+if which swift-format > /dev/null; then
+  swift-format lint -r TableGlass TableGlassKit TableGlassTests TableGlassUITests
+else
+  echo "warning: swift-format not installed, download from https://github.com/apple/swift-format"
+fi
+```

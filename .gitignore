@@ -1,0 +1,41 @@
+# Xcode
+#
+# gitignore contributors: remember to keep this file compatible with Git 1.5.4
+# and later, which is known to have some quirks with trailing slash support.
+
+## User-specific
+*.xcuserdatad
+*.xcworkspace
+
+## Build generated
+build/
+DerivedData/
+
+## Various settings
+*.xcscheme
+*.mode1v3
+*.mode2v3
+
+## Other
+*.moved-aside
+*.xccoverage
+*.xcresult
+
+# Swift Package Manager
+#
+# Add this line if you want to avoid checking in source code from Swift Package Manager dependencies.
+# Packages/
+.build/
+.swiftpm/
+
+# Carthage
+#
+# Add this line if you want to avoid checking in source code from Carthage dependencies.
+# Carthage/Checkouts
+Carthage/Build
+
+# Generated Documentation
+docs/
+
+# macOS
+.DS_Store
