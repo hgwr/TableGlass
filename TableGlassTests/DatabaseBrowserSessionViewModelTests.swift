@@ -75,7 +75,17 @@ struct DatabaseBrowserSessionViewModelTests {
             port: 0,
             username: "tester"
         )
-        let connection = LoggingStubConnection(profile: profile)
+        let connection = MockDatabaseConnection(
+            profile: profile,
+            metadata: .schema(DatabaseSchema(catalogs: [])),
+            routes: [
+                .sqlEquals(
+                    "SELECT 1",
+                    response: .result(DatabaseQueryResult(rows: [], affectedRowCount: 0))
+                )
+            ]
+        )
+        try await connection.connect()
         let log = DatabaseQueryLog(capacity: 5)
 
         let session = DatabaseBrowserSessionViewModel(
@@ -171,38 +181,6 @@ struct DatabaseBrowserSessionViewModelTests {
         #expect(state.pendingMode == nil)
         #expect(state.hasAcknowledged == false)
         #expect(state.isApplying == false)
-    }
-}
-
-private actor LoggingStubConnection: DatabaseConnection {
-    let profile: ConnectionProfile
-    private var recorded: [DatabaseQueryRequest] = []
-
-    init(profile: ConnectionProfile) {
-        self.profile = profile
-    }
-
-    func connect() async throws {}
-
-    func disconnect() async {}
-
-    func isConnected() async -> Bool { true }
-
-    func beginTransaction(options: DatabaseTransactionOptions) async throws -> any DatabaseTransaction {
-        throw DatabaseDriverUnavailable(driverKind: profile.kind, reason: "Not implemented")
-    }
-
-    func metadata(scope: DatabaseMetadataScope) async throws -> DatabaseSchema {
-        DatabaseSchema(catalogs: [])
-    }
-
-    func execute(_ request: DatabaseQueryRequest) async throws -> DatabaseQueryResult {
-        recorded.append(request)
-        return DatabaseQueryResult(rows: [], affectedRowCount: 0)
-    }
-
-    func recordedRequests() async -> [DatabaseQueryRequest] {
-        recorded
     }
 }
 

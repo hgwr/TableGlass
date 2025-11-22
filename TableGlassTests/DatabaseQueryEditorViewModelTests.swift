@@ -9,7 +9,14 @@ struct DatabaseQueryEditorViewModelTests {
 
     @Test
     func executesQueriesAndPublishesResults() async throws {
-        let executor = RecordingQueryExecutor(result: DatabaseQueryResult(rows: [DatabaseQueryRow(values: ["id": .int(1)])]))
+        let executor = MockDatabaseQueryExecutor(
+            routes: [
+                .sqlEquals(
+                    "SELECT 1",
+                    response: .result(DatabaseQueryResult(rows: [DatabaseQueryRow(values: ["id": .int(1)])]))
+                )
+            ]
+        )
         let viewModel = DatabaseQueryEditorViewModel(executor: executor.execute)
         viewModel.sqlText = "SELECT 1"
 
@@ -22,7 +29,7 @@ struct DatabaseQueryEditorViewModelTests {
 
     @Test
     func readOnlyModeBlocksMutations() async throws {
-        let executor = RecordingQueryExecutor(result: DatabaseQueryResult())
+        let executor = MockDatabaseQueryExecutor()
         let viewModel = DatabaseQueryEditorViewModel(executor: executor.execute)
         viewModel.sqlText = "DELETE FROM artists"
 
@@ -35,7 +42,7 @@ struct DatabaseQueryEditorViewModelTests {
 
     @Test
     func readOnlyModeBlocksCTEMutations() async throws {
-        let executor = RecordingQueryExecutor(result: DatabaseQueryResult())
+        let executor = MockDatabaseQueryExecutor()
         let viewModel = DatabaseQueryEditorViewModel(executor: executor.execute)
         viewModel.sqlText = """
         WITH cte AS (
@@ -53,17 +60,18 @@ struct DatabaseQueryEditorViewModelTests {
 
     @Test
     func errorsSurfaceWithRetryOption() async throws {
-        let executor = RecordingQueryExecutor(error: SampleError.failed)
+        let executor = MockDatabaseQueryExecutor(defaultResponse: .failure(QueryExecutorError.failed))
         let viewModel = DatabaseQueryEditorViewModel(executor: executor.execute)
         viewModel.sqlText = "SELECT * FROM broken"
 
         await viewModel.execute(isReadOnly: false)
 
         #expect(viewModel.result == nil)
-        #expect(viewModel.errorMessage == SampleError.failed.localizedDescription)
+        #expect(viewModel.errorMessage == QueryExecutorError.failed.localizedDescription)
 
-        await executor.updateError(nil)
-        await executor.updateResult(DatabaseQueryResult(rows: [DatabaseQueryRow(values: ["name": .string("ok")])]))
+        await executor.updateDefaultResponse(
+            .result(DatabaseQueryResult(rows: [DatabaseQueryRow(values: ["name": .string("ok")])]))
+        )
 
         await viewModel.execute(isReadOnly: false)
 
@@ -76,7 +84,14 @@ struct DatabaseQueryEditorViewModelTests {
     @Test
     func executionAppendsToSessionLog() async throws {
         let log = DatabaseQueryLog(capacity: 5)
-        let executor = RecordingQueryExecutor(result: DatabaseQueryResult(rows: [DatabaseQueryRow(values: ["ok": .bool(true)])]))
+        let executor = MockDatabaseQueryExecutor(
+            routes: [
+                .sqlEquals(
+                    "SELECT * FROM artists",
+                    response: .result(DatabaseQueryResult(rows: [DatabaseQueryRow(values: ["ok": .bool(true)])]))
+                )
+            ]
+        )
 
         let session = DatabaseBrowserSessionViewModel(
             databaseName: "stub",
@@ -99,38 +114,7 @@ struct DatabaseQueryEditorViewModelTests {
     }
 }
 
-private actor RecordingQueryExecutor: DatabaseQueryExecutor {
-    private var result: DatabaseQueryResult?
-    private var error: Error?
-    private var requests: [DatabaseQueryRequest] = []
-
-    init(result: DatabaseQueryResult? = nil, error: Error? = nil) {
-        self.result = result
-        self.error = error
-    }
-
-    func execute(_ request: DatabaseQueryRequest) async throws -> DatabaseQueryResult {
-        requests.append(request)
-        if let error {
-            throw error
-        }
-        return result ?? DatabaseQueryResult()
-    }
-
-    func recordedRequests() async -> [DatabaseQueryRequest] {
-        requests
-    }
-
-    func updateResult(_ result: DatabaseQueryResult?) {
-        self.result = result
-    }
-
-    func updateError(_ error: Error?) {
-        self.error = error
-    }
-}
-
-private enum SampleError: Error, LocalizedError {
+private enum QueryExecutorError: Error, LocalizedError, Sendable {
     case failed
 
     var errorDescription: String? { "Execution failed" }

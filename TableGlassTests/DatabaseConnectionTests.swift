@@ -1,3 +1,4 @@
+import Foundation
 import XCTest
 
 @testable import TableGlassKit
@@ -23,8 +24,7 @@ final class DatabaseConnectionTests: XCTestCase {
                                 DatabaseTable(
                                     name: "artists",
                                     columns: [
-                                        DatabaseColumn(
-                                            name: "id", dataType: .integer, isNullable: false),
+                                        DatabaseColumn(name: "id", dataType: .integer, isNullable: false),
                                         DatabaseColumn(name: "name", dataType: .text),
                                     ],
                                     primaryKey: ["id"]
@@ -36,7 +36,28 @@ final class DatabaseConnectionTests: XCTestCase {
             ]
         )
 
-        let connection = MockDatabaseConnection(profile: profile, metadataResponse: schema)
+        let price = Decimal(string: "19.99") ?? .zero
+        let connection = MockDatabaseConnection(
+            profile: profile,
+            metadata: .schema(schema),
+            routes: [
+                .sqlEquals(
+                    "SELECT * FROM artists",
+                    response: .result(
+                        DatabaseQueryResult(
+                            rows: [
+                                DatabaseQueryRow(values: [
+                                    "value": .int(1),
+                                    "price": .decimal(price),
+                                ])
+                            ]
+                        )
+                    )
+                ),
+            ],
+            defaultResponse: .failure(MockDatabaseError.unhandledRequest("default"))
+        )
+
         try await connection.connect()
         let isConnected = await connection.isConnected()
         XCTAssertTrue(isConnected)
@@ -47,8 +68,8 @@ final class DatabaseConnectionTests: XCTestCase {
 
         let firstRow = try XCTUnwrap(result.rows.first)
         XCTAssertEqual(firstRow[column: "value"], .int(1))
-        let expectedPrice = try XCTUnwrap(Decimal(string: "19.99"))
-        XCTAssertEqual(firstRow[column: "price"], .decimal(expectedPrice))
+        XCTAssertEqual(firstRow[column: "price"], .decimal(price))
+
         let recordedRequests = await connection.recordedRequests()
         XCTAssertEqual(recordedRequests, [request])
 
@@ -65,12 +86,18 @@ final class DatabaseConnectionTests: XCTestCase {
             username: "root"
         )
 
+        let transactionPlan = MockDatabaseTransactionPlan(
+            defaultResponse: .result(DatabaseQueryResult(rows: [], affectedRowCount: 1))
+        )
+
         let connection = MockDatabaseConnection(
-            profile: profile, metadataResponse: DatabaseSchema(catalogs: []))
+            profile: profile,
+            metadata: .schema(DatabaseSchema(catalogs: [])),
+            transactionPlan: transactionPlan
+        )
         try await connection.connect()
 
-        let transaction = try await connection.beginTransaction(
-            options: DatabaseTransactionOptions())
+        let transaction = try await connection.beginTransaction(options: DatabaseTransactionOptions())
         let request = DatabaseQueryRequest(sql: "UPDATE accounts SET balance = balance - 100")
         _ = try await transaction.execute(request)
         try await transaction.commit()
@@ -80,7 +107,7 @@ final class DatabaseConnectionTests: XCTestCase {
             return
         }
 
-        let executedRequests = await mockTransaction.executedRequests()
+        let executedRequests = await mockTransaction.executedRequestsSnapshot()
         XCTAssertEqual(executedRequests, [request])
 
         let didCommit = await mockTransaction.didCommit()
@@ -88,6 +115,61 @@ final class DatabaseConnectionTests: XCTestCase {
 
         let didRollback = await mockTransaction.didRollback()
         XCTAssertFalse(didRollback)
+    }
+
+    func testMocksCanSimulateErrorsAndLatency() async throws {
+        let profile = ConnectionProfile(
+            name: "SQLite",
+            kind: .sqlite,
+            host: ":memory:",
+            port: 0,
+            username: ""
+        )
+
+        let latency = MockDatabaseLatency(
+            connect: .milliseconds(5),
+            metadata: .milliseconds(5),
+            execute: .milliseconds(5),
+            transaction: .milliseconds(2)
+        )
+        let metadataDelay: Duration = .milliseconds(3)
+        let brokenQueryDelay: Duration = .milliseconds(2)
+
+        let connection = MockDatabaseConnection(
+            profile: profile,
+            metadata: .failure(SampleError.unavailable, delay: metadataDelay),
+            routes: [
+                .sqlContains("broken", response: .failure(SampleError.unavailable, delay: brokenQueryDelay))
+            ],
+            defaultResponse: .result(DatabaseQueryResult(rows: [DatabaseQueryRow(values: ["id": .int(1)])])),
+            latency: latency
+        )
+
+        let clock = ContinuousClock()
+        let tolerance = Duration.milliseconds(1)
+        let minimumConnect = max(Duration.zero, latency.connect - tolerance)
+        let connectStart = clock.now
+        try await connection.connect()
+        let connectElapsed = clock.now - connectStart
+        XCTAssertGreaterThanOrEqual(connectElapsed, minimumConnect)
+
+        let metadataStart = clock.now
+        do {
+            _ = try await connection.metadata(scope: DatabaseMetadataScope())
+            XCTFail("Expected metadata to fail")
+        } catch let error as SampleError {
+            XCTAssertEqual(error, .unavailable)
+        }
+        let metadataElapsed = clock.now - metadataStart
+        let minimumMetadata = max(Duration.zero, (metadataDelay) - tolerance)
+        XCTAssertGreaterThanOrEqual(metadataElapsed, minimumMetadata)
+
+        do {
+            _ = try await connection.execute(DatabaseQueryRequest(sql: "SELECT * FROM broken"))
+            XCTFail("Expected query to fail")
+        } catch let error as SampleError {
+            XCTAssertEqual(error, .unavailable)
+        }
     }
 
     func testPlaceholderDriverThrows() async {
@@ -126,7 +208,9 @@ final class DatabaseConnectionTests: XCTestCase {
                 .sqlite,
                 factory: AnyDatabaseConnectionFactory { profile in
                     MockDatabaseConnection(
-                        profile: profile, metadataResponse: DatabaseSchema(catalogs: []))
+                        profile: profile,
+                        metadata: .schema(DatabaseSchema(catalogs: []))
+                    )
                 })
 
         let connection = provider.makeConnection(for: profile)
@@ -136,83 +220,10 @@ final class DatabaseConnectionTests: XCTestCase {
     }
 }
 
-actor MockDatabaseConnection: DatabaseConnection {
-    let profile: ConnectionProfile
-    private var connected = false
-    private var requests: [DatabaseQueryRequest] = []
-    private let metadataResponse: DatabaseSchema
+private enum SampleError: Error, LocalizedError, Sendable, Equatable {
+    case unavailable
 
-    init(profile: ConnectionProfile, metadataResponse: DatabaseSchema) {
-        self.profile = profile
-        self.metadataResponse = metadataResponse
-    }
-
-    func connect() async throws {
-        connected = true
-    }
-
-    func disconnect() async {
-        connected = false
-    }
-
-    func isConnected() async -> Bool {
-        connected
-    }
-
-    func beginTransaction(options: DatabaseTransactionOptions) async throws
-        -> any DatabaseTransaction
-    {
-        MockDatabaseTransaction()
-    }
-
-    func metadata(scope: DatabaseMetadataScope) async throws -> DatabaseSchema {
-        metadataResponse
-    }
-
-    @discardableResult
-    func execute(_ request: DatabaseQueryRequest) async throws -> DatabaseQueryResult {
-        requests.append(request)
-        let price = Decimal(string: "19.99") ?? .zero
-        let row = DatabaseQueryRow(values: [
-            "value": .int(1),
-            "price": .decimal(price),
-        ])
-        return DatabaseQueryResult(rows: [row], affectedRowCount: nil)
-    }
-
-    func recordedRequests() async -> [DatabaseQueryRequest] {
-        requests
-    }
-}
-
-actor MockDatabaseTransaction: DatabaseTransaction {
-    private var requests: [DatabaseQueryRequest] = []
-    private var commitCalled = false
-    private var rollbackCalled = false
-
-    @discardableResult
-    func execute(_ request: DatabaseQueryRequest) async throws -> DatabaseQueryResult {
-        requests.append(request)
-        return DatabaseQueryResult(rows: [], affectedRowCount: 1)
-    }
-
-    func commit() async throws {
-        commitCalled = true
-    }
-
-    func rollback() async {
-        rollbackCalled = true
-    }
-
-    func executedRequests() async -> [DatabaseQueryRequest] {
-        requests
-    }
-
-    func didCommit() async -> Bool {
-        commitCalled
-    }
-
-    func didRollback() async -> Bool {
-        rollbackCalled
+    var errorDescription: String? {
+        "Resource unavailable"
     }
 }
