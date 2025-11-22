@@ -95,39 +95,27 @@ struct DatabaseTableContentView: View {
 
     private var tableView: some View {
         Table(viewModel.rows, selection: $viewModel.selection) {
-            ForEach(columns, id: \.name) { column in
-                TableColumn(column.name) { (row: DatabaseTableContentViewModel.EditableTableRow) in
-                    cell(for: row, column: column)
-                }
-                .width(min: 120)
-            }
+            dynamicColumns()
 
             TableColumn("Status", content: statusCell)
                 .width(90)
 
-            TableColumn("Actions") { row in
-                HStack(spacing: 8) {
-                    if row.isSaving {
-                        ProgressView()
-                            .controlSize(.small)
-                    }
-                    Button("Save") {
-                        Task { await viewModel.commitRow(row.id) }
-                    }
-                    .disabled(isReadOnly || !row.hasChanges || row.isSaving)
-
-                    Button("Delete", role: .destructive) {
-                        viewModel.selection = [row.id]
-                        isShowingDeleteConfirmation = true
-                    }
-                    .disabled(isReadOnly || row.isSaving)
-                }
-            }
-            .width(160)
+            TableColumn("Actions", content: actionsCell)
+                .width(160)
         }
         .tableStyle(.inset)
         .accessibilityIdentifier(DatabaseBrowserAccessibility.dataGrid.rawValue)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+    }
+
+    @TableColumnBuilder
+    private func dynamicColumns() -> some TableColumnContent<DatabaseTableContentViewModel.EditableTableRow> {
+        for column in columns {
+            TableColumn(column.name) { (row: DatabaseTableContentViewModel.EditableTableRow) in
+                cell(for: row, column: column)
+            }
+            .width(min: 120)
+        }
     }
 
     private func statusCell(for row: DatabaseTableContentViewModel.EditableTableRow) -> some View {
@@ -143,6 +131,25 @@ struct DatabaseTableContentView: View {
                 Label("Saved", systemImage: "checkmark.circle")
                     .foregroundStyle(.green)
             }
+        }
+    }
+
+    private func actionsCell(for row: DatabaseTableContentViewModel.EditableTableRow) -> some View {
+        HStack(spacing: 8) {
+            if row.isSaving {
+                ProgressView()
+                    .controlSize(.small)
+            }
+            Button("Save") {
+                Task { await viewModel.commitRow(row.id) }
+            }
+            .disabled(isReadOnly || !row.hasChanges || row.isSaving)
+
+            Button("Delete", role: .destructive) {
+                viewModel.selection = [row.id]
+                isShowingDeleteConfirmation = true
+            }
+            .disabled(isReadOnly || row.isSaving)
         }
     }
 
