@@ -618,7 +618,7 @@ private struct DatabaseBrowserTabView: NSViewRepresentable {
 }
 #endif
 
-private enum DatabaseBrowserAccessibility: String {
+enum DatabaseBrowserAccessibility: String {
     case tabGroup = "databaseBrowser.tabGroup"
     case showLogButton = "databaseBrowser.showLogButton"
     case readOnlyToggle = "databaseBrowser.readOnlyToggle"

@@ -96,7 +96,7 @@ struct DatabaseTableContentView: View {
     private var tableView: some View {
         Table(viewModel.rows, selection: $viewModel.selection) {
             ForEach(columns, id: \.name) { column in
-                TableColumn(column.name) { row in
+                TableColumn(column.name) { (row: DatabaseTableContentViewModel.EditableTableRow) in
                     cell(for: row, column: column)
                 }
                 .width(min: 120)
