@@ -23,7 +23,7 @@ struct DatabaseBrowserWindow: View {
                         viewModel.setReadOnly(value, for: session.id)
                     }
                 )
-                .tag(session.id as DatabaseBrowserSessionViewState.ID?)
+                .tag(session.id as DatabaseBrowserSessionViewModel.ID?)
                 .tabItem {
                     Label(session.databaseName, systemImage: "server.rack")
                 }
@@ -36,11 +36,9 @@ struct DatabaseBrowserWindow: View {
 }
 
 private struct DatabaseBrowserSessionView: View {
-    let session: DatabaseBrowserSessionViewState
+    @ObservedObject var session: DatabaseBrowserSessionViewModel
     let onShowLog: () -> Void
     let onToggleReadOnly: (Bool) -> Void
-
-    @State private var selectedSidebarItemID: DatabaseBrowserSidebarItem.ID?
 
     var body: some View {
         VStack(spacing: 0) {
@@ -53,6 +51,9 @@ private struct DatabaseBrowserSessionView: View {
             }
         }
         .frame(minWidth: 760, minHeight: 520)
+        .task {
+            await session.loadIfNeeded()
+        }
     }
 
     private var header: some View {
@@ -90,34 +91,70 @@ private struct DatabaseBrowserSessionView: View {
     }
 
     private var sidebar: some View {
-        List(selection: $selectedSidebarItemID) {
-            ForEach(session.sidebarSections) { section in
-                Section(section.title) {
-                    ForEach(section.items) { item in
-                        Label {
-                            Text(item.name)
-                                .accessibilityIdentifier(DatabaseBrowserAccessibility.sidebarRow(for: item.name))
-                        } icon: {
-                            Image(systemName: iconName(for: item.kind))
-                        }
-                        .tag(item.id as DatabaseBrowserSidebarItem.ID?)
-                    }
+        VStack(spacing: 8) {
+            HStack(spacing: 8) {
+                Text("Objects")
+                    .font(.subheadline)
+                    .bold()
+                if session.isExpandingAll {
+                    ProgressView()
+                        .controlSize(.mini)
+                        .accessibilityIdentifier(DatabaseBrowserAccessibility.expandAllProgress.rawValue)
                 }
+                Spacer()
+                Button {
+                    Task {
+                        await session.refresh()
+                    }
+                } label: {
+                    Image(systemName: "arrow.clockwise")
+                }
+                .buttonStyle(.borderless)
+                .help("Refresh schema metadata")
+                .accessibilityIdentifier(DatabaseBrowserAccessibility.refreshButton.rawValue)
+
+                Button {
+                    session.expandAll()
+                } label: {
+                    Image(systemName: "chevron.down")
+                }
+                .buttonStyle(.borderless)
+                .help("Expand all nodes")
+                .accessibilityIdentifier(DatabaseBrowserAccessibility.expandAllButton.rawValue)
+                .disabled(session.isExpandingAll)
+
+                Button {
+                    session.collapseAll()
+                } label: {
+                    Image(systemName: "chevron.up.chevron.down")
+                }
+                .buttonStyle(.borderless)
+                .help("Collapse all nodes")
+                .accessibilityIdentifier(DatabaseBrowserAccessibility.collapseAllButton.rawValue)
+                .disabled(session.isExpandingAll)
             }
+            .padding(.horizontal, 8)
+
+            DatabaseObjectTreeList(session: session)
         }
-        .frame(minWidth: 220)
+        .frame(minWidth: 240)
     }
 
     private var detailView: some View {
         VStack(alignment: .leading, spacing: 12) {
-            if let item = session.sidebarItem(with: selectedSidebarItemID) {
-                Text(verbatim: item.name)
+            if let node = session.selectedNode {
+                Text(verbatim: node.title)
                     .font(.title2)
                     .bold()
                     .accessibilityIdentifier(DatabaseBrowserAccessibility.detailTitle.rawValue)
-                    .accessibilityLabel(item.name)
-                    .accessibilityValue(item.name)
-                Text("Detail view placeholder for \(item.kind.rawValue).").foregroundStyle(.secondary)
+                    // Explicit label/value helps UI tests read the selected object's title.
+                    .accessibilityLabel(node.title)
+                    .accessibilityValue(node.title)
+                Label(node.kindDisplayName, systemImage: node.kind.systemImageName)
+                    .foregroundStyle(.secondary)
+                Text(pathDescription(for: node))
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
             } else {
                 Text("Select an object to view details")
                     .font(.title3)
@@ -130,15 +167,147 @@ private struct DatabaseBrowserSessionView: View {
         .background(.background)
     }
 
-    private func iconName(for kind: DatabaseBrowserSidebarItem.Kind) -> String {
-        switch kind {
-        case .table:
-            return "tablecells"
-        case .view:
-            return "eye"
-        case .storedProcedure:
-            return "gear"
+    private func pathDescription(for node: DatabaseObjectTreeNode) -> String {
+        switch node.kind {
+        case .catalog(let name):
+            return "Catalog \(name)"
+        case .namespace(let catalog, let name):
+            return "\(catalog).\(name)"
+        case .table(let catalog, let namespace, let name):
+            return "\(catalog).\(namespace).\(name)"
+        case .view(let catalog, let namespace, let name):
+            return "\(catalog).\(namespace).\(name)"
+        case .storedProcedure(let catalog, let namespace, let name):
+            return "\(catalog).\(namespace).\(name)"
         }
+    }
+}
+
+private struct DatabaseObjectTreeList: View {
+    @ObservedObject var session: DatabaseBrowserSessionViewModel
+
+    var body: some View {
+        List(selection: Binding(
+            get: { session.selectedNodeID },
+            set: { session.selectNode($0) }
+        )) {
+            ForEach(session.treeNodes) { node in
+                DatabaseObjectTreeRow(
+                    node: node,
+                    selection: Binding(
+                        get: { session.selectedNodeID },
+                        set: { session.selectNode($0) }
+                    ),
+                    onToggle: { id, isExpanded in
+                        session.toggleExpansion(for: id, isExpanded: isExpanded)
+                    }
+                )
+            }
+        }
+        .listStyle(.sidebar)
+        .accessibilityIdentifier(DatabaseBrowserAccessibility.sidebarList.rawValue)
+        .overlay {
+            if session.isRefreshing && session.treeNodes.isEmpty {
+                ProgressView("Loading objects…")
+                    .controlSize(.small)
+                    .padding()
+            } else if let message = session.loadError {
+                VStack(spacing: 8) {
+                    Text("Unable to load schema")
+                        .font(.subheadline)
+                        .bold()
+                    Text(message)
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                        .multilineTextAlignment(.center)
+                    Button("Retry") {
+                        Task {
+                            await session.refresh()
+                        }
+                    }
+                    .buttonStyle(.bordered)
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
+                .padding()
+            } else if session.treeNodes.isEmpty {
+                VStack(spacing: 6) {
+                    Text("No objects")
+                        .font(.subheadline)
+                        .bold()
+                    Text("Connect to a database to view tables, views, and procedures.")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
+                .padding()
+            }
+        }
+    }
+}
+
+private struct DatabaseObjectTreeRow: View {
+    let node: DatabaseObjectTreeNode
+    @Binding var selection: DatabaseObjectTreeNode.ID?
+    let onToggle: (DatabaseObjectTreeNode.ID, Bool) -> Void
+
+    var body: some View {
+        if node.isExpandable {
+            DisclosureGroup(
+                isExpanded: Binding(
+                    get: { node.isExpanded },
+                    set: { expanded in onToggle(node.id, expanded) }
+                )
+            ) {
+                if node.isLoading && node.children.isEmpty {
+                    HStack(spacing: 8) {
+                        ProgressView()
+                            .controlSize(.mini)
+                        Text("Loading…")
+                            .foregroundStyle(.secondary)
+                        Spacer()
+                    }
+                    .padding(.vertical, 2)
+                    .padding(.leading, 2)
+                }
+                ForEach(node.children) { child in
+                    DatabaseObjectTreeRow(
+                        node: child,
+                        selection: $selection,
+                        onToggle: onToggle
+                    )
+                    .padding(.leading, 12)
+                }
+            } label: {
+                rowLabel
+            }
+        } else {
+            rowLabel
+        }
+    }
+
+    private var rowLabel: some View {
+        HStack(spacing: 8) {
+            Image(systemName: node.kind.systemImageName)
+                .foregroundStyle(.secondary)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(verbatim: node.title)
+                    .accessibilityIdentifier(node.accessibilityIdentifier)
+                Text(node.kindDisplayName)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            Spacer()
+        }
+        .padding(.vertical, 4)
+        .contentShape(Rectangle())
+        .background(selection == node.id ? Color.accentColor.opacity(0.12) : .clear)
+        .clipShape(RoundedRectangle(cornerRadius: 6))
+        .onTapGesture {
+            selection = node.id
+            guard node.isExpandable else { return }
+            onToggle(node.id, !node.isExpanded)
+        }
+        .tag(node.id as DatabaseObjectTreeNode.ID?)
     }
 }
 
@@ -177,13 +346,16 @@ private struct DatabaseBrowserTabView: NSViewRepresentable {
     final class Coordinator: NSObject, NSTabViewDelegate {
         private let viewModel: DatabaseBrowserViewModel
         weak var tabView: NSTabView?
-        private var items: [DatabaseBrowserSessionViewState.ID: NSTabViewItem] = [:]
+        private var items: [DatabaseBrowserSessionViewModel.ID: NSTabViewItem] = [:]
 
         init(viewModel: DatabaseBrowserViewModel) {
             self.viewModel = viewModel
         }
 
-        func updateTabs(sessions: [DatabaseBrowserSessionViewState], selectedID: DatabaseBrowserSessionViewState.ID?) {
+        func updateTabs(
+            sessions: [DatabaseBrowserSessionViewModel],
+            selectedID: DatabaseBrowserSessionViewModel.ID?
+        ) {
             guard let tabView else { return }
 
             let sessionIDs = Set(sessions.map { $0.id })
@@ -241,17 +413,17 @@ private struct DatabaseBrowserTabView: NSViewRepresentable {
         }
 
         func tabView(_ tabView: NSTabView, didSelect tabViewItem: NSTabViewItem?) {
-            guard let id = tabViewItem?.identifier as? DatabaseBrowserSessionViewState.ID else { return }
+            guard let id = tabViewItem?.identifier as? DatabaseBrowserSessionViewModel.ID else { return }
             if viewModel.selectedSessionID != id {
                 viewModel.selectedSessionID = id
             }
         }
 
-        private func makeHostingView(for session: DatabaseBrowserSessionViewState) -> NSHostingView<DatabaseBrowserSessionView> {
+        private func makeHostingView(for session: DatabaseBrowserSessionViewModel) -> NSHostingView<DatabaseBrowserSessionView> {
             NSHostingView(rootView: makeSessionView(for: session))
         }
 
-        private func makeSessionView(for session: DatabaseBrowserSessionViewState) -> DatabaseBrowserSessionView {
+        private func makeSessionView(for session: DatabaseBrowserSessionViewModel) -> DatabaseBrowserSessionView {
             DatabaseBrowserSessionView(
                 session: session,
                 onShowLog: { /* Placeholder for log presentation */ },
@@ -269,6 +441,11 @@ private enum DatabaseBrowserAccessibility: String {
     case showLogButton = "databaseBrowser.showLogButton"
     case readOnlyToggle = "databaseBrowser.readOnlyToggle"
     case detailTitle = "databaseBrowser.detailTitle"
+    case refreshButton = "databaseBrowser.refreshButton"
+    case expandAllButton = "databaseBrowser.expandAll"
+    case expandAllProgress = "databaseBrowser.expandAllProgress"
+    case collapseAllButton = "databaseBrowser.collapseAll"
+    case sidebarList = "databaseBrowser.sidebarList"
 
     static func sidebarRow(for name: String) -> String {
         "databaseBrowser.sidebar.\(name)"

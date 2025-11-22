@@ -62,13 +62,24 @@ final class TableGlassUITests: XCTestCase {
         app.launchArguments.append("--uitest-database-browser")
         app.launch()
 
-        let usersRow = app.staticTexts["databaseBrowser.sidebar.users"]
-        XCTAssertTrue(usersRow.waitForExistence(timeout: 2))
-        usersRow.click()
+        let catalogRow = app.staticTexts["databaseBrowser.sidebar.catalog.main"]
+        XCTAssertTrue(catalogRow.waitForExistence(timeout: 2))
+        catalogRow.click()
+
+        let namespaceRow = app.staticTexts["databaseBrowser.sidebar.namespace.main.public"]
+        XCTAssertTrue(namespaceRow.waitForExistence(timeout: 2))
+        namespaceRow.click()
+
+        let tableRow = app.staticTexts["databaseBrowser.sidebar.table.main.public.artists"]
+        XCTAssertTrue(tableRow.waitForExistence(timeout: 2))
+        tableRow.click()
 
         let detailTitle = app.staticTexts["databaseBrowser.detailTitle"]
         XCTAssertTrue(detailTitle.waitForExistence(timeout: 1))
-        XCTAssertEqual(detailTitle.label, "users")
+        XCTAssertEqual(detailTitle.label, "artists")
+
+        catalogRow.click() // collapse back to verify hide
+        XCTAssertFalse(tableRow.isHittable)
     }
 
     @MainActor

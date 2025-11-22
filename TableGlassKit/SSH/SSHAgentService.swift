@@ -6,14 +6,18 @@ public protocol SSHAgentService: Sendable {
 
 public struct DefaultSSHAgentService: SSHAgentService {
     private let environment: [String: String]
-    private let fileManager: FileManager
+    private let fileAccess: any SSHFileAccessing
 
-    public init(
-        environment: [String: String] = ProcessInfo.processInfo.environment,
-        fileManager: FileManager = .default
+    public init(environment: [String: String] = ProcessInfo.processInfo.environment) {
+        self.init(environment: environment, fileAccess: DefaultSSHFileAccess())
+    }
+
+    init(
+        environment: [String: String],
+        fileAccess: any SSHFileAccessing
     ) {
         self.environment = environment
-        self.fileManager = fileManager
+        self.fileAccess = fileAccess
     }
 
     public func isAgentReachable() -> Bool {
@@ -22,10 +26,25 @@ public struct DefaultSSHAgentService: SSHAgentService {
         }
 
         var isDirectory: ObjCBool = false
-        guard fileManager.fileExists(atPath: socketPath, isDirectory: &isDirectory), !isDirectory.boolValue else {
+        guard fileAccess.fileExists(atPath: socketPath, isDirectory: &isDirectory), !isDirectory.boolValue else {
             return false
         }
 
-        return fileManager.isReadableFile(atPath: socketPath)
+        return fileAccess.isReadableFile(atPath: socketPath)
+    }
+}
+
+protocol SSHFileAccessing: Sendable {
+    func fileExists(atPath path: String, isDirectory: UnsafeMutablePointer<ObjCBool>?) -> Bool
+    func isReadableFile(atPath path: String) -> Bool
+}
+
+struct DefaultSSHFileAccess: SSHFileAccessing {
+    func fileExists(atPath path: String, isDirectory: UnsafeMutablePointer<ObjCBool>?) -> Bool {
+        FileManager.default.fileExists(atPath: path, isDirectory: isDirectory)
+    }
+
+    func isReadableFile(atPath path: String) -> Bool {
+        FileManager.default.isReadableFile(atPath: path)
     }
 }
