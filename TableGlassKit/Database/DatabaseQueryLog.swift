@@ -30,9 +30,10 @@ public actor DatabaseQueryLog {
     private var entries: [DatabaseQueryLogEntry]
     private var continuations: [UUID: AsyncStream<[DatabaseQueryLogEntry]>.Continuation]
 
-    public init(capacity: Int = 500) {
-        self.capacity = max(1, capacity)
-        entries = []
+    public init(capacity: Int = 500, initialEntries: [DatabaseQueryLogEntry] = []) {
+        let resolvedCapacity = max(1, capacity)
+        self.capacity = resolvedCapacity
+        entries = Array(initialEntries.suffix(resolvedCapacity))
         continuations = [:]
     }
 
@@ -178,12 +179,6 @@ public struct LoggingDatabaseConnection: DatabaseConnection, DatabaseQueryLoggin
 
 public extension DatabaseQueryLog {
     static func preview(with entries: [DatabaseQueryLogEntry]) -> DatabaseQueryLog {
-        let log = DatabaseQueryLog(capacity: max(entries.count, 1))
-        Task {
-            for entry in entries {
-                await log.append(entry)
-            }
-        }
-        return log
+        DatabaseQueryLog(capacity: max(entries.count, 1), initialEntries: entries)
     }
 }
