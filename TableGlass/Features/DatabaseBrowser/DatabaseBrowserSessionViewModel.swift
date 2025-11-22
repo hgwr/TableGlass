@@ -89,6 +89,13 @@ final class DatabaseBrowserSessionViewModel: ObservableObject, Identifiable {
         return try await queryExecutor.execute(request)
     }
 
+    func makeQueryEditorViewModel() -> DatabaseQueryEditorViewModel {
+        DatabaseQueryEditorViewModel { [weak self] request in
+            guard let self else { throw DatabaseConnectionError.notConnected }
+            return try await self.execute(request)
+        }
+    }
+
     func setAccessMode(_ mode: DatabaseAccessMode) async {
         guard mode != accessMode else { return }
         isUpdatingMode = true
