@@ -274,6 +274,9 @@
 			);
 			mainGroup = 17DE3CB62EC012850034C244;
 			minimizedProjectReferenceProxies = 1;
+			packageReferences = (
+				175FDD7E2ED25F960049B9DB /* XCRemoteSwiftPackageReference "postgres-nio" */,
+			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = 17DE3CC02EC012850034C244 /* Products */;
 			projectDirPath = "";
@@ -749,6 +752,17 @@
 			defaultConfigurationName = Release;
 		};
 /* End XCConfigurationList section */
+
+/* Begin XCRemoteSwiftPackageReference section */
+		175FDD7E2ED25F960049B9DB /* XCRemoteSwiftPackageReference "postgres-nio" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/vapor/postgres-nio.git";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 1.29.0;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
 	};
 	rootObject = 17DE3CB72EC012850034C244 /* Project object */;
 }
