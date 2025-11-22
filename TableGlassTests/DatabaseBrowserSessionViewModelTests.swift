@@ -120,6 +120,41 @@ struct DatabaseBrowserSessionViewModelTests {
     }
 
     @Test
+    func setAccessModeDoesNotOverridePendingOrErrorStatus() async throws {
+        let connectingController = RecordingModeController(initialMode: .readOnly)
+        let connectingSession = DatabaseBrowserSessionViewModel(
+            databaseName: "preview",
+            status: .connecting,
+            isReadOnly: true,
+            metadataProvider: PreviewDatabaseMetadataProvider(schema: .previewBrowserSchema),
+            modeController: connectingController
+        )
+
+        await connectingSession.setAccessMode(.writable)
+
+        let connectingModes = await connectingController.recordedModes()
+        #expect(connectingModes == [.writable])
+        #expect(connectingSession.isReadOnly == false)
+        #expect(connectingSession.status == .connecting)
+
+        let errorController = RecordingModeController(initialMode: .writable)
+        let errorSession = DatabaseBrowserSessionViewModel(
+            databaseName: "preview",
+            status: .error,
+            isReadOnly: false,
+            metadataProvider: PreviewDatabaseMetadataProvider(schema: .previewBrowserSchema),
+            modeController: errorController
+        )
+
+        await errorSession.setAccessMode(.readOnly)
+
+        let errorModes = await errorController.recordedModes()
+        #expect(errorModes == [.readOnly])
+        #expect(errorSession.isReadOnly == true)
+        #expect(errorSession.status == .error)
+    }
+
+    @Test
     func modeChangeConfirmationRequiresAcknowledgement() {
         var state = ModeChangeConfirmationState()
         state.prepare(for: .writable)

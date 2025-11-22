@@ -95,7 +95,9 @@ final class DatabaseBrowserSessionViewModel: ObservableObject, Identifiable {
         do {
             try await modeController?.setMode(mode)
             isReadOnly = mode == .readOnly
-            status = mode == .readOnly ? .readOnly : .online
+            if status == .online || status == .readOnly {
+                status = mode == .readOnly ? .readOnly : .online
+            }
         } catch {
             modeError = error.localizedDescription
         }
