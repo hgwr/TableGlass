@@ -2,6 +2,7 @@ import SwiftUI
 #if os(macOS)
 import AppKit
 #endif
+import TableGlassKit
 
 struct DatabaseBrowserWindow: View {
     @StateObject private var viewModel: DatabaseBrowserViewModel
@@ -18,10 +19,10 @@ var body: some View {
         ForEach(viewModel.sessions) { session in
             DatabaseBrowserSessionView(
                 session: session,
-                    onToggleReadOnly: { value in
-                        viewModel.setReadOnly(value, for: session.id)
-                    }
-                )
+                onConfirmAccessMode: { mode in
+                    await viewModel.setAccessMode(mode, for: session.id)
+                }
+            )
                 .tag(session.id as DatabaseBrowserSessionViewModel.ID?)
                 .tabItem {
                     Label(session.databaseName, systemImage: "server.rack")
@@ -36,14 +37,19 @@ var body: some View {
 
 private struct DatabaseBrowserSessionView: View {
     @ObservedObject var session: DatabaseBrowserSessionViewModel
-    let onToggleReadOnly: (Bool) -> Void
+    let onConfirmAccessMode: @Sendable (DatabaseAccessMode) async -> Void
 
     @StateObject private var logViewModel: DatabaseSessionLogViewModel
     @State private var isShowingLog = false
+    @State private var isShowingModeConfirmation = false
+    @State private var modeConfirmation = ModeChangeConfirmationState()
 
-    init(session: DatabaseBrowserSessionViewModel, onToggleReadOnly: @escaping (Bool) -> Void) {
+    init(
+        session: DatabaseBrowserSessionViewModel,
+        onConfirmAccessMode: @escaping @Sendable (DatabaseAccessMode) async -> Void
+    ) {
         _session = ObservedObject(initialValue: session)
-        self.onToggleReadOnly = onToggleReadOnly
+        self.onConfirmAccessMode = onConfirmAccessMode
         _logViewModel = StateObject(wrappedValue: DatabaseSessionLogViewModel(
             databaseName: session.databaseName,
             log: session.queryLog
@@ -64,8 +70,43 @@ private struct DatabaseBrowserSessionView: View {
         .sheet(isPresented: $isShowingLog) {
             DatabaseSessionLogView(viewModel: logViewModel)
         }
+        .sheet(isPresented: $isShowingModeConfirmation, onDismiss: { modeConfirmation.reset() }) {
+            ModeChangeConfirmationView(
+                state: $modeConfirmation,
+                databaseName: session.databaseName,
+                onConfirm: applyPendingModeChange,
+                onCancel: cancelPendingModeChange
+            )
+        }
         .task {
             await session.loadIfNeeded()
+        }
+    }
+
+    private func prepareModeChange(for mode: DatabaseAccessMode) {
+        modeConfirmation.prepare(for: mode)
+        isShowingModeConfirmation = true
+    }
+
+    private func cancelPendingModeChange() {
+        modeConfirmation.reset()
+        isShowingModeConfirmation = false
+    }
+
+    private func applyPendingModeChange() {
+        guard let mode = modeConfirmation.pendingMode else {
+            cancelPendingModeChange()
+            return
+        }
+
+        modeConfirmation.beginApplying()
+
+        Task {
+            await onConfirmAccessMode(mode)
+            await MainActor.run {
+                modeConfirmation.finish()
+                isShowingModeConfirmation = false
+            }
         }
     }
 
@@ -92,11 +133,12 @@ private struct DatabaseBrowserSessionView: View {
             Toggle("Read-Only", isOn: Binding(
                 get: { session.isReadOnly },
                 set: { newValue in
-                    onToggleReadOnly(newValue)
+                    prepareModeChange(for: newValue ? .readOnly : .writable)
                 }
             ))
             .toggleStyle(.switch)
             .accessibilityIdentifier(DatabaseBrowserAccessibility.readOnlyToggle.rawValue)
+            .disabled(session.isUpdatingMode)
         }
         .padding(.vertical, 12)
         .padding(.horizontal, 16)
@@ -193,6 +235,102 @@ private struct DatabaseBrowserSessionView: View {
         case .storedProcedure(let catalog, let namespace, let name):
             return "\(catalog).\(namespace).\(name)"
         }
+    }
+}
+
+struct ModeChangeConfirmationState {
+    var pendingMode: DatabaseAccessMode?
+    var hasAcknowledged: Bool = false
+    var isApplying: Bool = false
+
+    var canConfirm: Bool { hasAcknowledged && pendingMode != nil && !isApplying }
+
+    mutating func prepare(for mode: DatabaseAccessMode) {
+        pendingMode = mode
+        hasAcknowledged = false
+        isApplying = false
+    }
+
+    mutating func beginApplying() {
+        isApplying = true
+    }
+
+    mutating func finish() {
+        pendingMode = nil
+        hasAcknowledged = false
+        isApplying = false
+    }
+
+    mutating func reset() {
+        finish()
+    }
+}
+
+private struct ModeChangeConfirmationView: View {
+    @Binding var state: ModeChangeConfirmationState
+    let databaseName: String
+    let onConfirm: () -> Void
+    let onCancel: () -> Void
+
+    private var modeDescription: String {
+        guard let mode = state.pendingMode else { return "" }
+        switch mode {
+        case .readOnly:
+            return "Read-Only"
+        case .writable:
+            return "Writable"
+        }
+    }
+
+    private var detailMessage: String {
+        guard let mode = state.pendingMode else { return "" }
+        switch mode {
+        case .writable:
+            return "Switching to writable mode can modify data. Confirm to continue."
+        case .readOnly:
+            return "Read-only mode prevents accidental writes for this session."
+        }
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            Text("Change Access Mode")
+                .font(.title3)
+                .bold()
+
+            Text("\(databaseName) will switch to \(modeDescription) mode.")
+                .accessibilityIdentifier(DatabaseBrowserAccessibility.modeChangeMessage.rawValue)
+                .fixedSize(horizontal: false, vertical: true)
+
+            Text(detailMessage)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+
+            Toggle("Confirm", isOn: $state.hasAcknowledged)
+                .toggleStyle(.checkbox)
+                .accessibilityIdentifier(DatabaseBrowserAccessibility.modeChangeConfirmToggle.rawValue)
+
+            HStack {
+                if state.isApplying {
+                    ProgressView()
+                        .controlSize(.small)
+                }
+                Spacer()
+                Button("Cancel") {
+                    onCancel()
+                }
+                .accessibilityIdentifier(DatabaseBrowserAccessibility.modeChangeCancel.rawValue)
+
+                Button("OK") {
+                    onConfirm()
+                }
+                .keyboardShortcut(.defaultAction)
+                .disabled(!state.canConfirm)
+                .accessibilityIdentifier(DatabaseBrowserAccessibility.modeChangeConfirm.rawValue)
+            }
+        }
+        .padding()
+        .frame(minWidth: 420)
     }
 }
 
@@ -439,8 +577,8 @@ private struct DatabaseBrowserTabView: NSViewRepresentable {
         private func makeSessionView(for session: DatabaseBrowserSessionViewModel) -> DatabaseBrowserSessionView {
             DatabaseBrowserSessionView(
                 session: session,
-                onToggleReadOnly: { value in
-                    self.viewModel.setReadOnly(value, for: session.id)
+                onConfirmAccessMode: { mode in
+                    await self.viewModel.setAccessMode(mode, for: session.id)
                 }
             )
         }
@@ -458,6 +596,10 @@ private enum DatabaseBrowserAccessibility: String {
     case expandAllProgress = "databaseBrowser.expandAllProgress"
     case collapseAllButton = "databaseBrowser.collapseAll"
     case sidebarList = "databaseBrowser.sidebarList"
+    case modeChangeConfirmToggle = "databaseBrowser.modeChange.confirmToggle"
+    case modeChangeConfirm = "databaseBrowser.modeChange.confirmButton"
+    case modeChangeCancel = "databaseBrowser.modeChange.cancelButton"
+    case modeChangeMessage = "databaseBrowser.modeChange.message"
 
     static func sidebarRow(for name: String) -> String {
         "databaseBrowser.sidebar.\(name)"

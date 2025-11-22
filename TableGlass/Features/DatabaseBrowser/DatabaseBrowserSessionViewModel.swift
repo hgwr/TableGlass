@@ -8,6 +8,8 @@ final class DatabaseBrowserSessionViewModel: ObservableObject, Identifiable {
     let databaseName: String
     @Published var status: DatabaseBrowserSessionStatus
     @Published var isReadOnly: Bool
+    @Published private(set) var isUpdatingMode: Bool = false
+    @Published var modeError: String?
     @Published private(set) var treeNodes: [DatabaseObjectTreeNode]
     @Published var selectedNodeID: DatabaseObjectTreeNode.ID?
     @Published private(set) var isRefreshing: Bool = false
@@ -18,6 +20,7 @@ final class DatabaseBrowserSessionViewModel: ObservableObject, Identifiable {
     private let metadataProvider: any DatabaseMetadataProvider
     private let metadataScope: DatabaseMetadataScope
     private let queryExecutor: (any DatabaseQueryExecutor)?
+    private let modeController: (any DatabaseSessionModeControlling)?
 
     init(
         id: UUID = UUID(),
@@ -27,7 +30,8 @@ final class DatabaseBrowserSessionViewModel: ObservableObject, Identifiable {
         metadataProvider: some DatabaseMetadataProvider,
         metadataScope: DatabaseMetadataScope = DatabaseMetadataScope(),
         queryExecutor: (any DatabaseQueryExecutor)? = nil,
-        queryLog: DatabaseQueryLog = DatabaseQueryLog()
+        queryLog: DatabaseQueryLog = DatabaseQueryLog(),
+        modeController: (any DatabaseSessionModeControlling)? = nil
     ) {
         self.id = id
         self.databaseName = databaseName
@@ -42,8 +46,13 @@ final class DatabaseBrowserSessionViewModel: ObservableObject, Identifiable {
         } else {
             self.queryExecutor = metadata.queryExecutor
         }
+        self.modeController = modeController ?? InMemoryDatabaseSessionModeController(
+            initialMode: isReadOnly ? .readOnly : .writable
+        )
         self.treeNodes = []
     }
+
+    var accessMode: DatabaseAccessMode { isReadOnly ? .readOnly : .writable }
 
     func loadIfNeeded() async {
         guard treeNodes.isEmpty, !isRefreshing else { return }
@@ -75,6 +84,23 @@ final class DatabaseBrowserSessionViewModel: ObservableObject, Identifiable {
             throw DatabaseConnectionError.notConnected
         }
         return try await queryExecutor.execute(request)
+    }
+
+    func setAccessMode(_ mode: DatabaseAccessMode) async {
+        guard mode != accessMode else { return }
+        isUpdatingMode = true
+        modeError = nil
+        defer { isUpdatingMode = false }
+
+        do {
+            try await modeController?.setMode(mode)
+            isReadOnly = mode == .readOnly
+            if status == .online || status == .readOnly {
+                status = mode == .readOnly ? .readOnly : .online
+            }
+        } catch {
+            modeError = error.localizedDescription
+        }
     }
 
     @discardableResult
@@ -305,14 +331,14 @@ extension DatabaseBrowserSessionViewModel {
         [
             DatabaseBrowserSessionViewModel(
                 databaseName: "analytics",
-                status: .connecting,
+                status: .readOnly,
                 isReadOnly: true,
                 metadataProvider: metadataProviderFactory()
             ),
             DatabaseBrowserSessionViewModel(
                 databaseName: "production",
-                status: .online,
-                isReadOnly: false,
+                status: .readOnly,
+                isReadOnly: true,
                 metadataProvider: metadataProviderFactory()
             ),
         ]

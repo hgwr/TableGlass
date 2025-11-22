@@ -36,9 +36,9 @@ final class DatabaseBrowserViewModel: ObservableObject {
         selectedSessionID = newSession.id
     }
 
-    func setReadOnly(_ isReadOnly: Bool, for sessionID: DatabaseBrowserSessionViewModel.ID) {
+    func setAccessMode(_ mode: DatabaseAccessMode, for sessionID: DatabaseBrowserSessionViewModel.ID) async {
         guard let session = sessions.first(where: { $0.id == sessionID }) else { return }
-        session.isReadOnly = isReadOnly
+        await session.setAccessMode(mode)
     }
 
     func markStatus(_ status: DatabaseBrowserSessionStatus, for sessionID: DatabaseBrowserSessionViewModel.ID) {
