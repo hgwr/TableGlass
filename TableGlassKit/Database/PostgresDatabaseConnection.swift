@@ -50,9 +50,13 @@ public actor PostgresDatabaseConnection: DatabaseConnection {
 
     public func disconnect() async {
         connected = false
-        client = nil
-        runTask?.cancel()
+        let task = runTask
         runTask = nil
+        client = nil
+
+        // Wait for the client loop to exit so pooled connections are torn down.
+        task?.cancel()
+        _ = await task?.result
     }
 
     public func isConnected() async -> Bool {
