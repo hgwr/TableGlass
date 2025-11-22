@@ -36,6 +36,7 @@ excluded:
   - Pods/
   - .build/
   - derived_data/
+  - DerivedData/
 
 # Rule-specific configurations
 line_length: 120

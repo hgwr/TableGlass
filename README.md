@@ -54,10 +54,6 @@ You will need the following tools installed. The easiest way to install them is 
   ```sh
   brew install swift-format
   ```
-- **swift-doc**: For generating API documentation.
-  ```sh
-  brew install swift-doc
-  ```
 
 ### Building and Testing
 
@@ -119,7 +115,7 @@ This script will fail the build if formatting is incorrect, but it will not modi
 export PATH="$PATH:/opt/homebrew/bin"
 
 if which swift-format > /dev/null; then
-  swift-format --lint -r TableGlass/ TableGlassKit/
+  swift-format lint -r TableGlass/ TableGlassKit/
 else
   echo "warning: swift-format not installed, download from https://github.com/apple/swift-format"
 fi
