@@ -76,6 +76,9 @@ public actor DatabaseQueryLog {
     }
 }
 
+/// Marker protocol that identifies executors and connections that already append to a query log.
+public protocol DatabaseQueryLogging: Sendable {}
+
 public struct LoggingDatabaseQueryExecutor<Base: DatabaseQueryExecutor>: DatabaseQueryExecutor {
     private let base: Base
     private let log: DatabaseQueryLog
@@ -96,6 +99,8 @@ public struct LoggingDatabaseQueryExecutor<Base: DatabaseQueryExecutor>: Databas
         }
     }
 }
+
+extension LoggingDatabaseQueryExecutor: DatabaseQueryLogging {}
 
 public struct LoggingDatabaseTransaction<Base: DatabaseTransaction>: DatabaseTransaction {
     private var base: Base
@@ -118,6 +123,8 @@ public struct LoggingDatabaseTransaction<Base: DatabaseTransaction>: DatabaseTra
         try await LoggingDatabaseQueryExecutor(base: base, log: log).execute(request)
     }
 }
+
+extension LoggingDatabaseTransaction: DatabaseQueryLogging {}
 
 public struct LoggingDatabaseConnection<Base: DatabaseConnection>: DatabaseConnection {
     private var base: Base
@@ -155,6 +162,8 @@ public struct LoggingDatabaseConnection<Base: DatabaseConnection>: DatabaseConne
         try await LoggingDatabaseQueryExecutor(base: base, log: log).execute(request)
     }
 }
+
+extension LoggingDatabaseConnection: DatabaseQueryLogging {}
 
 public extension DatabaseQueryLog {
     static func preview(with entries: [DatabaseQueryLogEntry]) -> DatabaseQueryLog {

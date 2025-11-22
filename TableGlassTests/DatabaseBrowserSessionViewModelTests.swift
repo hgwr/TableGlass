@@ -65,4 +65,68 @@ struct DatabaseBrowserSessionViewModelTests {
         #expect(objectNames.contains("albums"))
         #expect(objectNames.contains("top_artists"))
     }
+
+    @Test
+    func executeQueriesAppendToLog() async throws {
+        let profile = ConnectionProfile(
+            name: "stub",
+            kind: .sqlite,
+            host: ":memory:",
+            port: 0,
+            username: "tester"
+        )
+        let connection = LoggingStubConnection(profile: profile)
+        let log = DatabaseQueryLog(capacity: 5)
+
+        let session = DatabaseBrowserSessionViewModel(
+            databaseName: "stub",
+            status: .online,
+            isReadOnly: false,
+            metadataProvider: connection,
+            queryLog: log
+        )
+
+        let request = DatabaseQueryRequest(sql: "SELECT 1")
+        _ = try await session.execute(request)
+
+        let entries = await log.entriesSnapshot()
+        #expect(entries.count == 1)
+        #expect(entries.first?.sql == request.sql)
+        #expect(entries.first?.outcome == .success)
+
+        let recorded = await connection.recordedRequests()
+        #expect(recorded == [request])
+    }
+}
+
+private actor LoggingStubConnection: DatabaseConnection {
+    let profile: ConnectionProfile
+    private var recorded: [DatabaseQueryRequest] = []
+
+    init(profile: ConnectionProfile) {
+        self.profile = profile
+    }
+
+    func connect() async throws {}
+
+    func disconnect() async {}
+
+    func isConnected() async -> Bool { true }
+
+    func beginTransaction(options: DatabaseTransactionOptions) async throws -> any DatabaseTransaction {
+        throw DatabaseDriverUnavailable(driverKind: profile.kind, reason: "Not implemented")
+    }
+
+    func metadata(scope: DatabaseMetadataScope) async throws -> DatabaseSchema {
+        DatabaseSchema(catalogs: [])
+    }
+
+    func execute(_ request: DatabaseQueryRequest) async throws -> DatabaseQueryResult {
+        recorded.append(request)
+        return DatabaseQueryResult(rows: [], affectedRowCount: 0)
+    }
+
+    func recordedRequests() async -> [DatabaseQueryRequest] {
+        recorded
+    }
 }
