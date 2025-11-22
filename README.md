@@ -21,6 +21,14 @@ Designed for macOS. Built using SwiftUI. It aims to be lightweight and easy to u
   2. Ensure the corresponding identity is stored in the login Keychain.
   3. Grant TableGlass access to the identity the first time the tunnel runs.
 
+## Testing & Mocks
+
+- CI and UI/unit tests run against the mock database layer in `TableGlassKit/Database` to avoid live connections.
+- Use `MockDatabaseConnection` and `MockDatabaseQueryExecutor` to script metadata responses, query results, errors, and per-call latency; register SQL routes via `MockDatabaseQueryRoute`.
+- Use `MockDatabaseTableDataService` to seed table rows and configure per-table behaviors (delays, rejection of specific IDs) when exercising grid edits.
+- Extend mocks by adding new routes/behaviors rather than hand-rolling per-test stubs so new cases inherit logging and failure simulation.
+- Real database or tunnel-backed tests must be gated behind the `LocalDebug` configuration; CI should never talk to live databases.
+
 ## Architecture Overview
 
 - `TableGlassKit`: Swift framework providing shared business logic and database abstractions.
