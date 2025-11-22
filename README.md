@@ -31,11 +31,18 @@ Designed for macOS. Built using SwiftUI. It aims to be lightweight and easy to u
 
 ### Local PostgreSQL testing (LocalDebug only)
 
-- Add the `postgres-nio` SwiftPM dependency to the Xcode project so `PostgresDatabaseConnection` is available at build time.
-- Store the database password in the macOS Keychain as a generic password and pass its account/label via `TABLEGLASS_POSTGRES_PASSWORD_ID`; the driver pulls secrets through `KeychainDatabasePasswordResolver` and never logs them.
-- Set environment variables before running integration tests locally:
-  - `TABLEGLASS_POSTGRES_HOST`, `TABLEGLASS_POSTGRES_PORT` (default `5432`), `TABLEGLASS_POSTGRES_USER`, `TABLEGLASS_POSTGRES_DB`, `TABLEGLASS_POSTGRES_SCHEMA` (default `public`), `TABLEGLASS_POSTGRES_PASSWORD_ID`.
-- Run the LocalDebug-only integration test suite (guarded by `#if LOCALDEBUG && canImport(PostgresNIO)`) after duplicating the Debug configuration with a `LOCALDEBUG` Swift flag.
+The `LocalDebug` build configuration is pre-configured to use a real PostgreSQL connection via `PostgresNIO`.
+
+- **Dependency**: The `postgres-nio` SwiftPM dependency is automatically linked to the `TableGlassKit` framework. The application uses this driver when launched under the `LocalDebug` configuration.
+- **Authentication**: Store your local database password in the macOS Keychain as a generic password. The application will read it using the identifier specified in the `TABLEGLASS_POSTGRES_PASSWORD_ID` environment variable. The `KeychainDatabasePasswordResolver` handles this securely, and your password is never logged or stored directly.
+- **Environment**: Before running the app or integration tests locally with the `LocalDebug` scheme, set the following environment variables:
+  - `TABLEGLASS_POSTGRES_HOST`
+  - `TABLEGLASS_POSTGRES_PORT` (default: `5432`)
+  - `TABLEGLASS_POSTGRES_USER`
+  - `TABLEGLASS_POSTGRES_DB`
+  - `TABLEGLASS_POSTGRES_SCHEMA` (default: `public`)
+  - `TABLEGLASS_POSTGRES_PASSWORD_ID` (the "Account" name of the generic password in Keychain)
+- **Execution**: To run the `LocalDebug`-only integration tests, select the `TableGlass` scheme and run the test action. These tests are guarded by `#if LOCALDEBUG && canImport(PostgresNIO)` and will only execute under the correct configuration.
 
 ## Architecture Overview
 

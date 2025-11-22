@@ -32,6 +32,14 @@ public extension AppDependencies {
         AppDependencies(connectionStore: EmptyConnectionStore())
     }
 
+    static func fromEnvironment() -> AppDependencies {
+        #if LOCALDEBUG
+        .localDebug()
+        #else
+        .empty
+        #endif
+    }
+
     #if canImport(PostgresNIO)
     static func localDebug(passwordResolver: some DatabasePasswordResolver = KeychainDatabasePasswordResolver()) -> AppDependencies {
         AppDependencies(

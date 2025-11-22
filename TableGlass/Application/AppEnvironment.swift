@@ -14,11 +14,7 @@ final class AppEnvironment: ObservableObject {
     }
 
     static func makeDefault() -> AppEnvironment {
-        #if canImport(PostgresNIO) && LOCALDEBUG
-        AppEnvironment(dependencies: .localDebug())
-        #else
-        AppEnvironment(dependencies: .empty)
-        #endif
+        AppEnvironment(dependencies: .fromEnvironment())
     }
 
     static func makePreview() -> AppEnvironment {
