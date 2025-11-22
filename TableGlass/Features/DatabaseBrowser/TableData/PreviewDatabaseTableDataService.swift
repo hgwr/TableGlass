@@ -52,9 +52,6 @@ actor PreviewDatabaseTableDataService: DatabaseTableDataService {
 
         let start = max(0, page * pageSize)
         let end = min(state.rows.count, start + pageSize)
-        if start >= state.rows.count {
-            state.rows = []
-        }
         tables[table] = state
         let slice = start < end ? Array(state.rows[start..<end]) : []
         let hasMore = end < state.rows.count

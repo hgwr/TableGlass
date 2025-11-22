@@ -120,16 +120,27 @@ final class DatabaseTableContentViewModel: ObservableObject {
         defer { isPerformingMutation = false }
 
         let ids = selection
+        var deletedRowIDs: [EditableTableRow.ID] = []
+        var errorMessages: [String] = []
+
         for id in ids {
             guard let index = rows.firstIndex(where: { $0.id == id }) else { continue }
             let row = rows[index]
             do {
                 try await tableDataService.deleteRow(for: table, row: row.source)
-                rows.remove(at: index)
-                selection.remove(id)
+                deletedRowIDs.append(id)
             } catch {
-                bannerError = error.localizedDescription
+                errorMessages.append(error.localizedDescription)
             }
+        }
+
+        if !deletedRowIDs.isEmpty {
+            rows.removeAll { deletedRowIDs.contains($0.id) }
+            selection.subtract(deletedRowIDs)
+        }
+
+        if !errorMessages.isEmpty {
+            bannerError = errorMessages.joined(separator: "\n")
         }
     }
 
