@@ -42,7 +42,8 @@ The `LocalDebug` build configuration is pre-configured to use a real PostgreSQL 
   - `TABLEGLASS_POSTGRES_DB`
   - `TABLEGLASS_POSTGRES_SCHEMA` (default: `public`)
   - `TABLEGLASS_POSTGRES_PASSWORD_ID` (the "Account" name of the generic password in Keychain)
-- **Execution**: To run the `LocalDebug`-only integration tests, select the `TableGlass` scheme and run the test action. These tests are guarded by `#if LOCALDEBUG && canImport(PostgresNIO)` and will only execute under the correct configuration.
+- **Execution**: To run the `LocalDebug`-only integration tests, select the `TableGlass` scheme and run the test action (or `xcodebuild test -scheme TableGlass -configuration LocalDebug -testPlan TableGlass -destination 'platform=macOS' -only-testing:TableGlassTests/PostgresNIOIntegrationTests/testCrudAndMetadataRoundTrip`). These tests are guarded by `#if LOCALDEBUG && canImport(PostgresNIO)` and will only execute under the correct configuration. The `TableGlassTests/TableGlass.xctestplan` carries default local env vars; override as needed in your shell.
+- **Timeouts**: Postgres connection and query calls now fail fast (10s handshake, 30s per query) to avoid hanging test runs when PostgreSQL isn’t reachable.
 
 ## Architecture Overview
 

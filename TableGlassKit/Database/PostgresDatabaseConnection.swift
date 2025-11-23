@@ -11,6 +11,8 @@ public actor PostgresDatabaseConnection: DatabaseConnection {
     private var client: PostgresClient?
     private var runTask: Task<Void, Never>?
     private var connected = false
+    private let connectionTimeout: Duration = .seconds(10)
+    private let queryTimeout: Duration = .seconds(30)
 
     public init(
         profile: ConnectionProfile,
@@ -38,13 +40,18 @@ public actor PostgresDatabaseConnection: DatabaseConnection {
 
         do {
             try Task.checkCancellation()
-            _ = try await client.withConnection { connection in
-                try await connection.query("SELECT 1").get()
+            _ = try await withTimeout(
+                connectionTimeout,
+                onTimeout: DatabaseError.connectionFailed("Connecting to \(self.profile.host) timed out")
+            ) {
+                try await client.withConnection { connection in
+                    try await connection.query("SELECT 1").get()
+                }
             }
             connected = true
         } catch {
             await disconnect()
-            throw mapConnectionError(error, context: "Unable to connect to \(profile.host)")
+            throw mapConnectionError(error, context: "Unable to connect to \(self.profile.host)")
         }
     }
 
@@ -142,8 +149,13 @@ public actor PostgresDatabaseConnection: DatabaseConnection {
 
         do {
             try Task.checkCancellation()
-            let result = try await client.withConnection { connection in
-                try await connection.query(request.sql, binds).get()
+            let result = try await withTimeout(
+                queryTimeout,
+                onTimeout: DatabaseError.queryFailed("Query timed out")
+            ) {
+                try await client.withConnection { connection in
+                    try await connection.query(request.sql, binds).get()
+                }
             }
             return Self.mapResult(result)
         } catch {
@@ -321,6 +333,9 @@ private extension PostgresDatabaseConnection {
         if error is CancellationError {
             return DatabaseError.cancelled
         }
+        if let databaseError = error as? DatabaseError {
+            return databaseError
+        }
         if let postgresError = error as? PSQLError {
             if postgresError.code == .queryCancelled {
                 return DatabaseError.cancelled
@@ -336,6 +351,9 @@ private extension PostgresDatabaseConnection {
     func mapConnectionError(_ error: Error, context: String) -> Error {
         if error is CancellationError {
             return DatabaseError.cancelled
+        }
+        if let databaseError = error as? DatabaseError {
+            return databaseError
         }
         if let postgresError = error as? PSQLError {
             if let message = postgresError.serverInfo?[.message] {
@@ -465,6 +483,26 @@ private extension PostgresDatabaseConnection {
             level = "SERIALIZABLE"
         }
         return "BEGIN ISOLATION LEVEL \(level)"
+    }
+
+    func withTimeout<T>(
+        _ duration: Duration,
+        onTimeout timeoutError: @autoclosure @escaping @Sendable () -> Error,
+        operation: @escaping @Sendable () async throws -> T
+    ) async throws -> T {
+        try await withThrowingTaskGroup(of: T.self) { group in
+            group.addTask { try await operation() }
+            group.addTask {
+                try await Task.sleep(for: duration)
+                throw timeoutError()
+            }
+
+            guard let result = try await group.next() else {
+                throw timeoutError()
+            }
+            group.cancelAll()
+            return result
+        }
     }
 }
 
