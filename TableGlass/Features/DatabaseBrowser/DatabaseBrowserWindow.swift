@@ -1,4 +1,5 @@
 import SwiftUI
+import OSLog
 #if os(macOS)
 import AppKit
 #endif
@@ -59,6 +60,9 @@ private struct DatabaseBrowserSessionView: View {
     @State private var isShowingLog = false
     @State private var isShowingModeConfirmation = false
     @State private var modeConfirmation = ModeChangeConfirmationState()
+    @State private var requestedAccessMode: DatabaseAccessMode?
+    @State private var toggleState: Bool
+    private let logger = Logger(subsystem: "com.tableglass", category: "DatabaseBrowser.SessionView")
 
     init(
         session: DatabaseBrowserSessionViewModel,
@@ -72,6 +76,7 @@ private struct DatabaseBrowserSessionView: View {
         ))
         _tableContentViewModel = StateObject(wrappedValue: session.makeTableContentViewModel())
         _queryEditorViewModel = StateObject(wrappedValue: session.makeQueryEditorViewModel())
+        _toggleState = State(initialValue: session.isReadOnly)
     }
 
     var body: some View {
@@ -99,9 +104,13 @@ private struct DatabaseBrowserSessionView: View {
         .task {
             await session.loadIfNeeded()
         }
+        .onChange(of: session.isReadOnly) { _, newValue in
+            toggleState = newValue
+        }
     }
 
     private func prepareModeChange(for mode: DatabaseAccessMode) {
+        requestedAccessMode = mode
         modeConfirmation.prepare(for: mode)
         isShowingModeConfirmation = true
     }
@@ -109,22 +118,24 @@ private struct DatabaseBrowserSessionView: View {
     private func cancelPendingModeChange() {
         modeConfirmation.reset()
         isShowingModeConfirmation = false
+        requestedAccessMode = nil
+        toggleState = session.isReadOnly
     }
 
     private func applyPendingModeChange() {
-        guard let mode = modeConfirmation.pendingMode else {
+        guard let mode = requestedAccessMode ?? modeConfirmation.pendingMode else {
             cancelPendingModeChange()
             return
         }
 
         modeConfirmation.beginApplying()
 
-        Task {
+        Task { @MainActor in
+            logger.debug("Applying pending access mode \(mode.logDescription) for \(self.session.databaseName, privacy: .public)")
             await onConfirmAccessMode(mode)
-            await MainActor.run {
-                modeConfirmation.finish()
-                isShowingModeConfirmation = false
-            }
+            modeConfirmation.finish()
+            isShowingModeConfirmation = false
+            requestedAccessMode = nil
         }
     }
 
@@ -149,9 +160,13 @@ private struct DatabaseBrowserSessionView: View {
             .accessibilityIdentifier(DatabaseBrowserAccessibility.showLogButton.rawValue)
 
             Toggle("Read-Only", isOn: Binding(
-                get: { session.isReadOnly },
+                get: { toggleState },
                 set: { newValue in
-                    prepareModeChange(for: newValue ? .readOnly : .writable)
+                    toggleState = newValue
+                    logger.debug("User toggled Read-Only switch for \(self.session.databaseName, privacy: .public) to \(newValue ? "on" : "off") (current: \(self.session.isReadOnly ? "on" : "off"))")
+                    let targetMode: DatabaseAccessMode = newValue ? .readOnly : .writable
+                    logger.debug("User requested access mode change for \(self.session.databaseName, privacy: .public) to \(targetMode.logDescription)")
+                    prepareModeChange(for: targetMode)
                 }
             ))
             .toggleStyle(.switch)
@@ -384,6 +399,20 @@ private struct ModeChangeConfirmationView: View {
         }
         .padding()
         .frame(minWidth: 420)
+    }
+}
+
+#if DEBUG
+// Helper for logging readable mode names in this file.
+#endif
+private extension DatabaseAccessMode {
+    var logDescription: String {
+        switch self {
+        case .readOnly:
+            return "read-only"
+        case .writable:
+            return "writable"
+        }
     }
 }
 

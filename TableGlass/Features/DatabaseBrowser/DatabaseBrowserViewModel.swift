@@ -116,7 +116,11 @@ final class DatabaseBrowserViewModel: ObservableObject {
     }
 
     func setAccessMode(_ mode: DatabaseAccessMode, for sessionID: DatabaseBrowserSessionViewModel.ID) async {
-        guard let session = sessions.first(where: { $0.id == sessionID }) else { return }
+        guard let session = sessions.first(where: { $0.id == sessionID }) else {
+            logger.error("Requested access mode change for missing session \(sessionID.uuidString, privacy: .public)")
+            return
+        }
+        logger.info("Applying access mode \(mode.logDescription) to session \(session.databaseName, privacy: .public)")
         await session.setAccessMode(mode)
     }
 
@@ -151,5 +155,16 @@ final class DatabaseBrowserViewModel: ObservableObject {
         liveConnections.removeAll()
         sessionProfiles.removeAll()
         connectedProfileIDs.removeAll()
+    }
+}
+
+private extension DatabaseAccessMode {
+    var logDescription: String {
+        switch self {
+        case .readOnly:
+            return "read-only"
+        case .writable:
+            return "writable"
+        }
     }
 }

@@ -1,5 +1,6 @@
 import Combine
 import Foundation
+import OSLog
 import TableGlassKit
 
 @MainActor
@@ -22,6 +23,7 @@ final class DatabaseBrowserSessionViewModel: ObservableObject, Identifiable {
     private let queryExecutor: (any DatabaseQueryExecutor)?
     private let modeController: (any DatabaseSessionModeControlling)?
     private let tableDataService: any DatabaseTableDataService
+    private let logger = Logger(subsystem: "com.tableglass", category: "DatabaseBrowser.SessionMode")
 
     init(
         id: UUID = UUID(),
@@ -101,9 +103,13 @@ final class DatabaseBrowserSessionViewModel: ObservableObject, Identifiable {
     }
 
     func setAccessMode(_ mode: DatabaseAccessMode) async {
-        guard mode != accessMode else { return }
+        guard mode != accessMode else {
+            logger.debug("Ignoring access mode change for \(self.databaseName, privacy: .public); already \(mode.logDescription)")
+            return
+        }
         isUpdatingMode = true
         modeError = nil
+        logger.info("Changing access mode for \(self.databaseName, privacy: .public) to \(mode.logDescription)")
         defer { isUpdatingMode = false }
 
         do {
@@ -112,8 +118,10 @@ final class DatabaseBrowserSessionViewModel: ObservableObject, Identifiable {
             if status == .online || status == .readOnly {
                 status = mode == .readOnly ? .readOnly : .online
             }
+            logger.info("Access mode updated for \(self.databaseName, privacy: .public): isReadOnly=\(self.isReadOnly), status=\(self.status.rawValue)")
         } catch {
             modeError = error.localizedDescription
+            logger.error("Failed to change access mode for \(self.databaseName, privacy: .public) to \(mode.logDescription): \(error.localizedDescription, privacy: .public)")
         }
     }
 
@@ -361,5 +369,16 @@ extension DatabaseBrowserSessionViewModel {
                 metadataProvider: metadataProviderFactory()
             ),
         ]
+    }
+}
+
+private extension DatabaseAccessMode {
+    var logDescription: String {
+        switch self {
+        case .readOnly:
+            return "read-only"
+        case .writable:
+            return "writable"
+        }
     }
 }
