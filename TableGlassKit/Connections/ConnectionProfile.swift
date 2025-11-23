@@ -1,14 +1,14 @@
 import Foundation
 
-public struct ConnectionProfile: Identifiable, Hashable, Sendable {
-    public enum DatabaseKind: String, CaseIterable, Sendable {
+public struct ConnectionProfile: Identifiable, Hashable, Sendable, Codable {
+    public enum DatabaseKind: String, CaseIterable, Sendable, Codable {
         case postgreSQL
         case mySQL
         case sqlite
     }
 
-    public struct SSHConfiguration: Hashable, Sendable {
-        public enum AuthenticationMethod: String, CaseIterable, Sendable {
+    public struct SSHConfiguration: Hashable, Sendable, Codable {
+        public enum AuthenticationMethod: String, CaseIterable, Sendable, Codable {
             case keyFile
             case usernameAndPassword
             case sshAgent
@@ -50,6 +50,7 @@ public struct ConnectionProfile: Identifiable, Hashable, Sendable {
     public var host: String
     public var port: Int
     public var username: String
+    public var database: String?
     public var sshConfiguration: SSHConfiguration
     public var passwordKeychainIdentifier: String?
 
@@ -60,6 +61,7 @@ public struct ConnectionProfile: Identifiable, Hashable, Sendable {
         host: String,
         port: Int,
         username: String,
+        database: String? = nil,
         sshConfiguration: SSHConfiguration = SSHConfiguration(),
         passwordKeychainIdentifier: String? = nil
     ) {
@@ -69,6 +71,7 @@ public struct ConnectionProfile: Identifiable, Hashable, Sendable {
         self.host = host
         self.port = port
         self.username = username
+        self.database = database
         self.sshConfiguration = sshConfiguration
         self.passwordKeychainIdentifier = passwordKeychainIdentifier
     }

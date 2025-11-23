@@ -12,7 +12,6 @@ build/
 DerivedData/
 
 ## Various settings
-*.xcscheme
 *.mode1v3
 *.mode2v3
 
@@ -39,3 +38,5 @@ docs/
 
 # macOS
 .DS_Store
+
+.envrc

@@ -14,8 +14,7 @@ final class AppEnvironment: ObservableObject {
     }
 
     static func makeDefault() -> AppEnvironment {
-        // TODO: Replace with a real implementation of ConnectionStore.
-        AppEnvironment(dependencies: .empty)
+        AppEnvironment(dependencies: .fromEnvironment())
     }
 
     static func makePreview() -> AppEnvironment {
@@ -35,7 +34,10 @@ final class AppEnvironment: ObservableObject {
     }
 
     func makeDatabaseBrowserViewModel() -> DatabaseBrowserViewModel {
-        DatabaseBrowserViewModel()
+        DatabaseBrowserViewModel(
+            connectionStore: dependencies.connectionStore,
+            connectionProvider: dependencies.databaseConnectionProvider
+        )
     }
 
     func openStandaloneDatabaseBrowserWindow() {
