@@ -1,0 +1,67 @@
+{
+  "configurations" : [
+    {
+      "id" : "FF05D592-2CAF-4F73-AFA2-B29DB21DCC11",
+      "name" : "LocalDebug",
+      "options" : {
+
+      }
+    }
+  ],
+  "defaultOptions" : {
+    "codeCoverage" : false,
+    "defaultTestExecutionTimeAllowance" : 120,
+    "environmentVariableEntries" : [
+      {
+        "key" : "TABLEGLASS_POSTGRES_HOST",
+        "value" : "localhost"
+      },
+      {
+        "key" : "TABLEGLASS_POSTGRES_PORT",
+        "value" : "5432"
+      },
+      {
+        "key" : "TABLEGLASS_POSTGRES_USER",
+        "value" : "postgres"
+      },
+      {
+        "key" : "TABLEGLASS_POSTGRES_DB",
+        "value" : "postgres"
+      },
+      {
+        "key" : "TABLEGLASS_POSTGRES_SCHEMA",
+        "value" : "public"
+      },
+      {
+        "key" : "TABLEGLASS_POSTGRES_PASSWORD_ID",
+        "value" : "none"
+      }
+    ],
+    "maximumTestExecutionTimeAllowance" : 180,
+    "targetForVariableExpansion" : {
+      "containerPath" : "container:TableGlass.xcodeproj",
+      "identifier" : "17DE3CBE2EC012850034C244",
+      "name" : "TableGlass"
+    },
+    "testTimeoutsEnabled" : true
+  },
+  "testTargets" : [
+    {
+      "parallelizable" : true,
+      "target" : {
+        "containerPath" : "container:TableGlass.xcodeproj",
+        "identifier" : "17DE3CCB2EC012860034C244",
+        "name" : "TableGlassTests"
+      }
+    },
+    {
+      "parallelizable" : true,
+      "target" : {
+        "containerPath" : "container:TableGlass.xcodeproj",
+        "identifier" : "17DE3CD52EC012860034C244",
+        "name" : "TableGlassUITests"
+      }
+    }
+  ],
+  "version" : 1
+}
