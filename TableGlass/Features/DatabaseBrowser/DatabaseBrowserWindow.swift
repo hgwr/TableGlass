@@ -132,7 +132,7 @@ private struct DatabaseBrowserSessionView: View {
 
         Task { @MainActor in
             logger.debug("Applying pending access mode \(mode.logDescription) for \(self.session.databaseName, privacy: .public)")
-            await onConfirmAccessMode(mode)
+            await session.setAccessMode(mode)
             modeConfirmation.finish()
             isShowingModeConfirmation = false
             requestedAccessMode = nil
