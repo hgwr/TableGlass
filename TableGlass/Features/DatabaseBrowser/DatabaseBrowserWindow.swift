@@ -47,6 +47,8 @@ struct DatabaseBrowserWindow: View {
         }
     }
 
+}
+
 private struct DatabaseBrowserSessionView: View {
     @ObservedObject var session: DatabaseBrowserSessionViewModel
     let onConfirmAccessMode: @Sendable (DatabaseAccessMode) async -> Void
@@ -400,13 +402,11 @@ private struct DatabaseBrowserPlaceholderView: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .padding()
-        .background(
-            #if os(macOS)
-            Color(nsColor: .windowBackgroundColor)
-            #else
-            Color(.systemBackground)
-            #endif
-        )
+        #if os(macOS)
+        .background(Color(nsColor: .windowBackgroundColor))
+        #else
+        .background(Color(.systemBackground))
+        #endif
     }
 }
 
