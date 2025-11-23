@@ -1,5 +1,6 @@
 import Combine
 import Foundation
+import OSLog
 import TableGlassKit
 
 @MainActor
@@ -14,6 +15,7 @@ final class DatabaseBrowserViewModel: ObservableObject {
     private var sessionProfiles: [DatabaseBrowserSessionViewModel.ID: ConnectionProfile.ID] = [:]
     private var connectedProfileIDs: Set<ConnectionProfile.ID> = []
     private var hasLoadedConnections = false
+    private let logger = Logger(subsystem: "com.tableglass", category: "DatabaseBrowser")
 
     init(
         sessions: [DatabaseBrowserSessionViewModel] = [],
@@ -48,6 +50,7 @@ final class DatabaseBrowserViewModel: ObservableObject {
         do {
             let profiles = try await connectionStore.listConnections()
             guard !profiles.isEmpty else { return }
+            logger.info("Loading \(profiles.count, privacy: .public) saved connection(s) into Database Browser")
 
             if liveConnections.isEmpty {
                 sessions = []
@@ -58,6 +61,7 @@ final class DatabaseBrowserViewModel: ObservableObject {
                 await connect(profile)
             }
         } catch {
+            logger.error("Failed to load saved connections: \(error.localizedDescription, privacy: .public)")
             hasLoadedConnections = false
             sessions = []
             selectedSessionID = nil
@@ -83,12 +87,14 @@ final class DatabaseBrowserViewModel: ObservableObject {
 
         Task {
             do {
+                logger.info("Attempting DB connection for profile \(profile.name, privacy: .public)")
                 try await connection.connect()
                 await MainActor.run {
                     session.status = .readOnly
                 }
                 await session.refresh()
             } catch {
+                logger.error("DB connection failed for profile \(profile.name, privacy: .public): \(error.localizedDescription, privacy: .public)")
                 await MainActor.run {
                     session.status = .error
                     session.setLoadError(error.localizedDescription)

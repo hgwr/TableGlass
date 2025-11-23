@@ -28,6 +28,7 @@ public actor PostgresDatabaseConnection: DatabaseConnection {
         guard !connected else { return }
 
         let configuration = try await makeConfiguration()
+        logger.info("Connecting to postgres host=\(configuration.host) port=\(configuration.port) user=\(configuration.username) db=\(configuration.database ?? "<nil>")")
         let client = PostgresClient(
             configuration: configuration,
             backgroundLogger: .init(label: "TableGlass.Postgres.Background", factory: { _ in SwiftLogNoOpLogHandler() })
@@ -49,13 +50,16 @@ public actor PostgresDatabaseConnection: DatabaseConnection {
                 }
             }
             connected = true
+            logger.info("Postgres connection established for \(configuration.host)")
         } catch {
+            logger.error("Postgres connection failed: \(error.localizedDescription)")
             await disconnect()
             throw mapConnectionError(error, context: "Unable to connect to \(self.profile.host)")
         }
     }
 
     public func disconnect() async {
+        logger.info("Disconnecting postgres \(profile.host)")
         connected = false
         let task = runTask
         runTask = nil
@@ -76,6 +80,7 @@ public actor PostgresDatabaseConnection: DatabaseConnection {
             Task {
                 do {
                     try Task.checkCancellation()
+                    logger.debug("BEGIN transaction isolation=\(String(describing: options.isolationLevel))")
                     try await client.withConnection { connection in
                         try await connection.query(Self.beginStatement(options: options)).get()
                         let transaction = PostgresDatabaseTransaction(
@@ -96,8 +101,10 @@ public actor PostgresDatabaseConnection: DatabaseConnection {
     }
 
     public func metadata(scope: DatabaseMetadataScope) async throws -> DatabaseSchema {
+        logger.info("Loading metadata schemas=\(String(describing: scope.schemaNames)) includeTables=\(scope.includeTables) includeViews=\(scope.includeViews) includeProcedures=\(scope.includeProcedures)")
         let targetSchemas = try await resolveSchemas(scope)
         guard !targetSchemas.isEmpty else {
+            logger.warning("No schemas resolved for metadata request.")
             return DatabaseSchema(catalogs: [])
         }
 
@@ -139,6 +146,7 @@ public actor PostgresDatabaseConnection: DatabaseConnection {
             }
             .sorted { $0.name < $1.name }
 
+        logger.info("Metadata loaded catalogs=\(catalogs.count)")
         return DatabaseSchema(catalogs: catalogs)
     }
 
@@ -154,11 +162,13 @@ public actor PostgresDatabaseConnection: DatabaseConnection {
                 onTimeout: DatabaseError.queryFailed("Query timed out")
             ) {
                 try await client.withConnection { connection in
-                    try await connection.query(request.sql, binds).get()
+                    self.logger.debug("Executing query: \(request.sql)")
+                    return try await connection.query(request.sql, binds).get()
                 }
             }
             return Self.mapResult(result)
         } catch {
+            logger.error("Query failed: \(error.localizedDescription)")
             throw mapError(error, context: "Query failed")
         }
     }
@@ -364,8 +374,8 @@ private extension PostgresDatabaseConnection {
         return DatabaseError.connectionFailed(context)
     }
 
-    static func makeBindings(from parameters: [DatabaseQueryValue]) throws -> [PostgresData] {
-        try parameters.map { value in
+    static func makeBindings(from parameters: [DatabaseQueryValue]) -> [PostgresData] {
+        parameters.map { value in
             switch value {
             case .null:
                 return .null
@@ -438,7 +448,7 @@ private extension PostgresDatabaseConnection {
             return .uuid(uuid)
         }
 
-        return .string(data.description)
+        return .string(String(describing: data))
     }
 
     static func mapColumnType(_ type: String, precision: Int?, scale: Int?) -> DatabaseColumnDataType {

@@ -1,5 +1,6 @@
 import Combine
 import Foundation
+import OSLog
 import TableGlassKit
 
 @MainActor
@@ -25,6 +26,7 @@ final class ConnectionManagementViewModel: ObservableObject {
     private let databasePasswordStore: any DatabasePasswordStoring
     private var hasLoadedSSHAliases = false
     private var hasLoadedSSHIdentities = false
+    private let logger = Logger(subsystem: "com.tableglass", category: "ConnectionManagement")
 
     init(
         connectionStore: some ConnectionStore,
@@ -64,6 +66,7 @@ final class ConnectionManagementViewModel: ObservableObject {
                 startCreatingConnection()
             }
         } catch {
+            logger.error("Failed to load connections: \(error.localizedDescription, privacy: .public)")
             lastError = error.localizedDescription
             connections = []
             startCreatingConnection()
