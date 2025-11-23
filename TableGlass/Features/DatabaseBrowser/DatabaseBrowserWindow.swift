@@ -11,29 +11,41 @@ struct DatabaseBrowserWindow: View {
         _viewModel = StateObject(wrappedValue: viewModel)
     }
 
-var body: some View {
+    var body: some View {
+        Group {
 #if os(macOS)
-    DatabaseBrowserTabView(viewModel: viewModel)
-#else
-    TabView(selection: $viewModel.selectedSessionID) {
-        ForEach(viewModel.sessions) { session in
-            DatabaseBrowserSessionView(
-                session: session,
-                onConfirmAccessMode: { mode in
-                    await viewModel.setAccessMode(mode, for: session.id)
-                }
-            )
-                .tag(session.id as DatabaseBrowserSessionViewModel.ID?)
-                .tabItem {
-                    Label(session.databaseName, systemImage: "server.rack")
-                }
+            if viewModel.sessions.isEmpty {
+                DatabaseBrowserPlaceholderView()
+            } else {
+                DatabaseBrowserTabView(viewModel: viewModel)
             }
-        }
-        .tabViewStyle(.automatic)
-        .accessibilityIdentifier(DatabaseBrowserAccessibility.tabGroup.rawValue)
+#else
+            if viewModel.sessions.isEmpty {
+                DatabaseBrowserPlaceholderView()
+            } else {
+                TabView(selection: $viewModel.selectedSessionID) {
+                    ForEach(viewModel.sessions) { session in
+                        DatabaseBrowserSessionView(
+                            session: session,
+                            onConfirmAccessMode: { mode in
+                                await viewModel.setAccessMode(mode, for: session.id)
+                            }
+                        )
+                        .tag(session.id as DatabaseBrowserSessionViewModel.ID?)
+                        .tabItem {
+                            Label(session.databaseName, systemImage: "server.rack")
+                        }
+                    }
+                }
+                .tabViewStyle(.automatic)
+                .accessibilityIdentifier(DatabaseBrowserAccessibility.tabGroup.rawValue)
+            }
 #endif
+        }
+        .task {
+            await viewModel.loadSavedConnections()
+        }
     }
-}
 
 private struct DatabaseBrowserSessionView: View {
     @ObservedObject var session: DatabaseBrowserSessionViewModel
@@ -370,6 +382,31 @@ private struct ModeChangeConfirmationView: View {
         }
         .padding()
         .frame(minWidth: 420)
+    }
+}
+
+private struct DatabaseBrowserPlaceholderView: View {
+    var body: some View {
+        VStack(spacing: 12) {
+            Image(systemName: "server.rack")
+                .font(.system(size: 42))
+                .foregroundStyle(.secondary)
+            Text("No database sessions")
+                .font(.headline)
+            Text("Create or select a connection in Connection Management to browse a database.")
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .padding()
+        .background(
+            #if os(macOS)
+            Color(nsColor: .windowBackgroundColor)
+            #else
+            Color(.systemBackground)
+            #endif
+        )
     }
 }
 

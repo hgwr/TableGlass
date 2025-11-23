@@ -32,20 +32,22 @@ public extension AppDependencies {
         AppDependencies(connectionStore: EmptyConnectionStore())
     }
 
-    static func fromEnvironment() -> AppDependencies {
-        #if LOCALDEBUG
-        .localDebug()
-        #else
-        .empty
-        #endif
+    static func fromEnvironment(
+        passwordResolver: some DatabasePasswordResolver = KeychainDatabasePasswordResolver()
+    ) -> AppDependencies {
+        .live(passwordResolver: passwordResolver)
+    }
+
+    static func live(passwordResolver: some DatabasePasswordResolver = KeychainDatabasePasswordResolver()) -> AppDependencies {
+        AppDependencies(
+            connectionStore: UserDefaultsConnectionStore(),
+            databaseConnectionProvider: .placeholderDrivers.withPostgresNIO(passwordResolver: passwordResolver)
+        )
     }
 
     #if canImport(PostgresNIO)
     static func localDebug(passwordResolver: some DatabasePasswordResolver = KeychainDatabasePasswordResolver()) -> AppDependencies {
-        AppDependencies(
-            connectionStore: PreviewConnectionStore(),
-            databaseConnectionProvider: .placeholderDrivers.withPostgresNIO(passwordResolver: passwordResolver)
-        )
+        .live(passwordResolver: passwordResolver)
     }
     #endif
 }

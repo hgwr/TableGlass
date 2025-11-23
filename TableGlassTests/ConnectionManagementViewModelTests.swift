@@ -281,13 +281,15 @@ struct ConnectionManagementViewModelTests {
         store: MockConnectionStore,
         aliases: [String] = [],
         identities: [SSHKeychainIdentityReference] = [],
-        isSSHAgentReachable: Bool = false
+        isSSHAgentReachable: Bool = false,
+        passwordStore: MockDatabasePasswordStore = MockDatabasePasswordStore()
     ) -> ConnectionManagementViewModel {
         ConnectionManagementViewModel(
             connectionStore: store,
             sshAliasProvider: MockSSHAliasProvider(aliases: aliases),
             sshKeychainService: MockSSHKeychainService(identities: identities),
-            sshAgentService: MockSSHAgentService(isReachable: isSSHAgentReachable)
+            sshAgentService: MockSSHAgentService(isReachable: isSSHAgentReachable),
+            databasePasswordStore: passwordStore
         )
     }
 }
@@ -353,5 +355,18 @@ struct MockSSHAgentService: SSHAgentService, Sendable {
 
     func isAgentReachable() -> Bool {
         isReachable
+    }
+}
+
+actor MockDatabasePasswordStore: DatabasePasswordStoring {
+    private(set) var stored: [String: String] = [:]
+
+    func store(password: String, identifier: String) async throws -> String {
+        stored[identifier] = password
+        return identifier
+    }
+
+    func deletePassword(identifier: String) async throws {
+        stored.removeValue(forKey: identifier)
     }
 }

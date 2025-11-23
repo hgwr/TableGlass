@@ -22,6 +22,7 @@ final class ConnectionManagementViewModel: ObservableObject {
     private let sshAliasProvider: any SSHConfigAliasProvider
     private let sshKeychainService: any SSHKeychainService
     private let sshAgentService: any SSHAgentService
+    private let databasePasswordStore: any DatabasePasswordStoring
     private var hasLoadedSSHAliases = false
     private var hasLoadedSSHIdentities = false
 
@@ -29,12 +30,14 @@ final class ConnectionManagementViewModel: ObservableObject {
         connectionStore: some ConnectionStore,
         sshAliasProvider: some SSHConfigAliasProvider = DefaultSSHConfigAliasProvider(),
         sshKeychainService: some SSHKeychainService = DefaultSSHKeychainService(),
-        sshAgentService: some SSHAgentService = DefaultSSHAgentService()
+        sshAgentService: some SSHAgentService = DefaultSSHAgentService(),
+        databasePasswordStore: some DatabasePasswordStoring = KeychainDatabasePasswordStore()
     ) {
         self.connectionStore = connectionStore
         self.sshAliasProvider = sshAliasProvider
         self.sshKeychainService = sshKeychainService
         self.sshAgentService = sshAgentService
+        self.databasePasswordStore = databasePasswordStore
         self.isSSHAgentReachable = sshAgentService.isAgentReachable()
     }
 
@@ -372,18 +375,20 @@ final class ConnectionManagementViewModel: ObservableObject {
         defer { isSaving = false }
 
         do {
+            let targetID = isNewConnection ? ConnectionProfile.ID() : (selection ?? ConnectionProfile.ID())
+            var profile = draft.makeProfile(id: targetID)
+            try await persistDatabasePassword(into: &profile)
+
             if isNewConnection {
-                let profile = draft.makeProfile()
                 try await connectionStore.saveConnection(profile)
                 connections.append(profile)
                 applySelection(id: profile.id)
             } else if let selection {
-                let updated = draft.makeProfile(id: selection)
-                try await connectionStore.saveConnection(updated)
+                try await connectionStore.saveConnection(profile)
                 if let index = connections.firstIndex(where: { $0.id == selection }) {
-                    connections[index] = updated
+                    connections[index] = profile
                 }
-                applySelection(id: updated.id)
+                applySelection(id: profile.id)
             }
             lastError = nil
         } catch {
@@ -395,10 +400,14 @@ final class ConnectionManagementViewModel: ObservableObject {
         guard let selection else {
             return
         }
+        let target = connections.first(where: { $0.id == selection })
 
         do {
             try await connectionStore.deleteConnection(id: selection)
             connections.removeAll { $0.id == selection }
+            if let target {
+                await deletePasswordIfNeeded(for: target)
+            }
             if let next = connections.first {
                 applySelection(id: next.id)
             } else {
@@ -407,6 +416,28 @@ final class ConnectionManagementViewModel: ObservableObject {
         } catch {
             lastError = error.localizedDescription
         }
+    }
+
+    private func persistDatabasePassword(into profile: inout ConnectionProfile) async throws {
+        let trimmed = draft.password.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+
+        let identifier = profile.passwordKeychainIdentifier
+            ?? draft.passwordKeychainIdentifier
+            ?? passwordKeychainIdentifier(for: profile.id)
+        let stored = try await databasePasswordStore.store(password: trimmed, identifier: identifier)
+        profile.passwordKeychainIdentifier = stored
+        draft.passwordKeychainIdentifier = stored
+        draft.password = ""
+    }
+
+    private func deletePasswordIfNeeded(for profile: ConnectionProfile) async {
+        guard let identifier = profile.passwordKeychainIdentifier else { return }
+        _ = try? await databasePasswordStore.deletePassword(identifier: identifier)
+    }
+
+    private func passwordKeychainIdentifier(for id: ConnectionProfile.ID) -> String {
+        "tableglass.connection.\(id.uuidString)"
     }
 }
 

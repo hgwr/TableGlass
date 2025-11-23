@@ -81,6 +81,10 @@ final class DatabaseBrowserSessionViewModel: ObservableObject, Identifiable {
         isRefreshing = false
     }
 
+    func setLoadError(_ message: String?) {
+        loadError = message
+    }
+
     @discardableResult
     func execute(_ request: DatabaseQueryRequest) async throws -> DatabaseQueryResult {
         guard let queryExecutor else {

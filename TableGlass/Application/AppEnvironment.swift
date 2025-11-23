@@ -34,7 +34,10 @@ final class AppEnvironment: ObservableObject {
     }
 
     func makeDatabaseBrowserViewModel() -> DatabaseBrowserViewModel {
-        DatabaseBrowserViewModel()
+        DatabaseBrowserViewModel(
+            connectionStore: dependencies.connectionStore,
+            connectionProvider: dependencies.databaseConnectionProvider
+        )
     }
 
     func openStandaloneDatabaseBrowserWindow() {

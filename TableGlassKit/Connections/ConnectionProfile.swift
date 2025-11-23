@@ -1,14 +1,14 @@
 import Foundation
 
-public struct ConnectionProfile: Identifiable, Hashable, Sendable {
-    public enum DatabaseKind: String, CaseIterable, Sendable {
+public struct ConnectionProfile: Identifiable, Hashable, Sendable, Codable {
+    public enum DatabaseKind: String, CaseIterable, Sendable, Codable {
         case postgreSQL
         case mySQL
         case sqlite
     }
 
-    public struct SSHConfiguration: Hashable, Sendable {
-        public enum AuthenticationMethod: String, CaseIterable, Sendable {
+    public struct SSHConfiguration: Hashable, Sendable, Codable {
+        public enum AuthenticationMethod: String, CaseIterable, Sendable, Codable {
             case keyFile
             case usernameAndPassword
             case sshAgent
