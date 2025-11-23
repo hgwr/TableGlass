@@ -28,7 +28,11 @@ public actor PostgresDatabaseConnection: DatabaseConnection {
         guard !connected else { return }
 
         let configuration = try await makeConfiguration()
-        logger.info("Connecting to postgres host=\(configuration.host) port=\(configuration.port) user=\(configuration.username) db=\(configuration.database ?? "<nil>")")
+        let logHost = configuration.host
+        let logPort = configuration.port
+        let logUser = configuration.username
+        let logDatabase = configuration.database ?? "<nil>"
+        logger.info("Connecting to postgres host=\(logHost) port=\(logPort) user=\(logUser) db=\(logDatabase)")
         let client = PostgresClient(
             configuration: configuration,
             backgroundLogger: .init(label: "TableGlass.Postgres.Background", factory: { _ in SwiftLogNoOpLogHandler() })
@@ -50,7 +54,7 @@ public actor PostgresDatabaseConnection: DatabaseConnection {
                 }
             }
             connected = true
-            logger.info("Postgres connection established for \(configuration.host)")
+            logger.info("Postgres connection established for \(logHost)")
         } catch {
             logger.error("Postgres connection failed: \(error.localizedDescription)")
             await disconnect()
@@ -82,7 +86,7 @@ public actor PostgresDatabaseConnection: DatabaseConnection {
                     try Task.checkCancellation()
                     logger.debug("BEGIN transaction isolation=\(String(describing: options.isolationLevel))")
                     try await client.withConnection { connection in
-                        try await connection.query(Self.beginStatement(options: options)).get()
+                        _ = try await connection.query(Self.beginStatement(options: options)).get()
                         let transaction = PostgresDatabaseTransaction(
                             connection: connection,
                             mapper: Self.mapResult,
@@ -153,7 +157,7 @@ public actor PostgresDatabaseConnection: DatabaseConnection {
     @discardableResult
     public func execute(_ request: DatabaseQueryRequest) async throws -> DatabaseQueryResult {
         let client = try requireClient()
-        let binds = try Self.makeBindings(from: request.parameters)
+        let binds = Self.makeBindings(from: request.parameters)
 
         do {
             try Task.checkCancellation()
@@ -183,8 +187,10 @@ private extension PostgresDatabaseConnection {
             throw DatabaseError.invalidConfiguration("Database name is required for PostgreSQL connections.")
         }
 
+        let host = profile.host.lowercased() == "localhost" ? "127.0.0.1" : profile.host
+
         return PostgresClient.Configuration(
-            host: profile.host,
+            host: host,
             port: profile.port,
             username: profile.username,
             password: password,
@@ -448,7 +454,8 @@ private extension PostgresDatabaseConnection {
             return .uuid(uuid)
         }
 
-        return .string(String(describing: data))
+        let length = data.value?.readableBytes ?? 0
+        return .string("<unmapped oid=\(data.type) length=\(length)>")
     }
 
     static func mapColumnType(_ type: String, precision: Int?, scale: Int?) -> DatabaseColumnDataType {
@@ -545,7 +552,7 @@ private actor PostgresDatabaseTransaction: DatabaseTransaction {
     @discardableResult
     func execute(_ request: DatabaseQueryRequest) async throws -> DatabaseQueryResult {
         do {
-            let binds = try PostgresDatabaseConnection.makeBindings(from: request.parameters)
+            let binds = PostgresDatabaseConnection.makeBindings(from: request.parameters)
             let result = try await connection.query(request.sql, binds).get()
             return mapper(result)
         } catch {
@@ -618,3 +625,4 @@ extension DatabaseQueryValue {
     }
 }
 #endif
+
