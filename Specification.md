@@ -42,7 +42,7 @@ TableGlass is a macOS-native database management tool built with SwiftUI. It aim
 - Available when a table is selected and the **Table Editor** tab is active. Uses table metadata to render columns (name + type), row status, and actions.
 - Buttons: **Add Row** (seeds defaults/nulls), **Delete** (with confirmation for selected rows), **Save** per row. All mutation controls are disabled in read-only mode or while a mutation is running.
 - Row status shows Saved/Unsaved/Error with inline validation errors; banner errors appear at the top when fetch or mutation fails.
-- Pagination streams rows in pages (default 50); **Load More** appears at the end and prefetches automatically as you scroll.
+- Pagination streams rows in pages (default 50); **Load More** appears at the end, and the next page is prefetched automatically as you scroll near the end of the list.
 
 ## Query History and Logging
 
