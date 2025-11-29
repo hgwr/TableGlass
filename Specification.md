@@ -2,7 +2,7 @@
 
 ## About TableGlass
 
-TableGlass is a macOS-native database management tool built with SwiftUI. It aims to stay lightweight, responsive, and secure while supporting PostgreSQL, MySQL, and SQLite (system) drivers. Database access is async/await, and SSH/Keychain integration is required for secrets and tunnels.
+TableGlass is a macOS-native database management tool built with SwiftUI. It aims to stay lightweight, responsive, and secure while supporting PostgreSQL, MySQL, and SQLite drivers. Database access is async/await, and SSH/Keychain integration is required for secrets and tunnels.
 
 ## Startup and Window Flow
 
