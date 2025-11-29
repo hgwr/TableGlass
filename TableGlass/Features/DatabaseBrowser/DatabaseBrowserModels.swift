@@ -125,6 +125,15 @@ extension DatabaseObjectTreeNode {
             return "Stored Procedure"
         }
     }
+
+    var tableIdentifier: DatabaseTableIdentifier? {
+        switch kind {
+        case .table(let catalog, let namespace, let name):
+            return DatabaseTableIdentifier(catalog: catalog, namespace: namespace, name: name)
+        default:
+            return nil
+        }
+    }
 }
 
 extension DatabaseObjectTreeNode.Kind {
@@ -141,5 +150,23 @@ extension DatabaseObjectTreeNode.Kind {
         case .storedProcedure:
             return "gear"
         }
+    }
+}
+
+extension DatabaseTableIdentifier {
+    func defaultSelectSQL(limit: Int) -> String {
+        let schema = namespace.trimmingCharacters(in: .whitespacesAndNewlines)
+        let rowLimit = max(1, limit)
+        let qualifiedName: String
+        if schema.isEmpty {
+            qualifiedName = Self.quoteIdentifier(name)
+        } else {
+            qualifiedName = "\(Self.quoteIdentifier(schema)).\(Self.quoteIdentifier(name))"
+        }
+        return "SELECT * FROM \(qualifiedName) LIMIT \(rowLimit);"
+    }
+
+    private static func quoteIdentifier(_ value: String) -> String {
+        "\"\(value.replacingOccurrences(of: "\"", with: "\"\""))\""
     }
 }

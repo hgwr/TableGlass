@@ -4,12 +4,32 @@ import TableGlassKit
 struct DatabaseQueryEditorView: View {
     @ObservedObject var viewModel: DatabaseQueryEditorViewModel
     let isReadOnly: Bool
+    let showsResultsInline: Bool
+    let onExecute: (() -> Void)?
+
+    init(
+        viewModel: DatabaseQueryEditorViewModel,
+        isReadOnly: Bool,
+        showsResultsInline: Bool = true,
+        onExecute: (() -> Void)? = nil
+    ) {
+        self.viewModel = viewModel
+        self.isReadOnly = isReadOnly
+        self.showsResultsInline = showsResultsInline
+        self.onExecute = onExecute
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             header
             editor
-            footer
+            if showsResultsInline {
+                DatabaseQueryResultSection(
+                    viewModel: viewModel,
+                    isReadOnly: isReadOnly,
+                    onExecute: onExecute
+                )
+            }
         }
         .padding(12)
         .background(.thinMaterial)
@@ -31,6 +51,7 @@ struct DatabaseQueryEditorView: View {
 
     private var executeButton: some View {
         Button {
+            onExecute?()
             Task { await viewModel.execute(isReadOnly: isReadOnly) }
         } label: {
             Label("Run", systemImage: "play.fill")
@@ -68,34 +89,6 @@ struct DatabaseQueryEditorView: View {
                     .font(.footnote)
                     .foregroundStyle(.secondary)
             }
-        }
-    }
-
-    @ViewBuilder
-    private var footer: some View {
-        if let error = viewModel.errorMessage {
-            HStack(alignment: .firstTextBaseline, spacing: 8) {
-                Image(systemName: "exclamationmark.triangle.fill")
-                    .foregroundStyle(.yellow)
-                Text(error)
-                    .foregroundStyle(.primary)
-                    .font(.callout)
-                Spacer()
-                Button("Retry") {
-                    Task { await viewModel.execute(isReadOnly: isReadOnly) }
-                }
-                .buttonStyle(.bordered)
-            }
-            .padding(10)
-            .background(Color(nsColor: .windowBackgroundColor))
-            .clipShape(RoundedRectangle(cornerRadius: 8))
-            .accessibilityIdentifier(DatabaseBrowserAccessibility.queryErrorMessage.rawValue)
-        } else if let result = viewModel.result {
-            DatabaseQueryResultView(result: result)
-        } else {
-            Text("Results will appear here after you run a query.")
-                .foregroundStyle(.secondary)
-                .font(.callout)
         }
     }
 
@@ -175,6 +168,40 @@ private struct DatabaseQueryResultView: View {
         .padding(.vertical, 2)
         .background(index % 2 == 0 ? Color(nsColor: .controlBackgroundColor) : Color.clear)
         .clipShape(RoundedRectangle(cornerRadius: 4))
+    }
+}
+
+struct DatabaseQueryResultSection: View {
+    @ObservedObject var viewModel: DatabaseQueryEditorViewModel
+    let isReadOnly: Bool
+    let onExecute: (() -> Void)?
+
+    var body: some View {
+        if let error = viewModel.errorMessage {
+            HStack(alignment: .firstTextBaseline, spacing: 8) {
+                Image(systemName: "exclamationmark.triangle.fill")
+                    .foregroundStyle(.yellow)
+                Text(error)
+                    .foregroundStyle(.primary)
+                    .font(.callout)
+                Spacer()
+                Button("Retry") {
+                    onExecute?()
+                    Task { await viewModel.execute(isReadOnly: isReadOnly) }
+                }
+                .buttonStyle(.bordered)
+            }
+            .padding(10)
+            .background(Color(nsColor: .windowBackgroundColor))
+            .clipShape(RoundedRectangle(cornerRadius: 8))
+            .accessibilityIdentifier(DatabaseBrowserAccessibility.queryErrorMessage.rawValue)
+        } else if let result = viewModel.result {
+            DatabaseQueryResultView(result: result)
+        } else {
+            Text("Results will appear here after you run a query.")
+                .foregroundStyle(.secondary)
+                .font(.callout)
+        }
     }
 }
 
