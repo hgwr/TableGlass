@@ -11,6 +11,7 @@ final class DatabaseBrowserViewModel: ObservableObject {
     private let metadataProviderFactory: @Sendable () -> any DatabaseMetadataProvider
     private let connectionStore: (any ConnectionStore)?
     private let connectionProvider: DatabaseConnectionProvider
+    private let shouldUsePreviewSessions: Bool
     private var liveConnections: [DatabaseBrowserSessionViewModel.ID: any DatabaseConnection] = [:]
     private var sessionProfiles: [DatabaseBrowserSessionViewModel.ID: ConnectionProfile.ID] = [:]
     private var connectedProfileIDs: Set<ConnectionProfile.ID> = []
@@ -28,8 +29,12 @@ final class DatabaseBrowserViewModel: ObservableObject {
         self.metadataProviderFactory = metadataProviderFactory
         self.connectionStore = connectionStore
         self.connectionProvider = connectionProvider
+        self.shouldUsePreviewSessions = ProcessInfo.processInfo.arguments.contains(
+            UITestArguments.databaseBrowser.rawValue
+        )
 
-        if sessions.isEmpty, connectionStore == nil {
+        let shouldBootstrapPreviewSessions = sessions.isEmpty && (connectionStore == nil || shouldUsePreviewSessions)
+        if shouldBootstrapPreviewSessions {
             self.sessions = DatabaseBrowserSessionViewModel.previewSessions(metadataProviderFactory: metadataProviderFactory)
         } else {
             self.sessions = sessions
@@ -51,6 +56,7 @@ final class DatabaseBrowserViewModel: ObservableObject {
     }
 
     func loadSavedConnections() async {
+        guard !shouldUsePreviewSessions else { return }
         guard let connectionStore, !hasLoadedConnections else { return }
         hasLoadedConnections = true
 
