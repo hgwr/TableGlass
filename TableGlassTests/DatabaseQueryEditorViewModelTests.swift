@@ -112,6 +112,84 @@ struct DatabaseQueryEditorViewModelTests {
         #expect(entries.first?.sql == "SELECT * FROM artists")
         #expect(entries.first?.outcome == .success)
     }
+
+    @Test
+    func recordsHistoryEntriesAndDeduplicates() async throws {
+        let history = DatabaseQueryHistory()
+        let executor = MockDatabaseQueryExecutor(
+            routes: [
+                .sqlEquals(
+                    "SELECT * FROM artists",
+                    response: .result(DatabaseQueryResult(rows: [DatabaseQueryRow(values: [:])]))
+                ),
+                .sqlEquals(
+                    "DELETE FROM tracks",
+                    response: .result(DatabaseQueryResult(rows: []))
+                )
+            ],
+            defaultResponse: .result(DatabaseQueryResult(rows: []))
+        )
+
+        let viewModel = DatabaseQueryEditorViewModel(history: history, executor: executor.execute)
+        viewModel.sqlText = "SELECT * FROM artists"
+        await viewModel.execute(isReadOnly: false)
+        viewModel.sqlText = "SELECT * FROM artists"
+        await viewModel.execute(isReadOnly: false)
+        viewModel.sqlText = "DELETE FROM tracks"
+        await viewModel.execute(isReadOnly: false)
+
+        let snapshot = await history.snapshot()
+        #expect(snapshot == ["DELETE FROM tracks", "SELECT * FROM artists"])
+    }
+
+    @Test
+    func historyNavigationRestoresUnsubmittedText() async throws {
+        let history = DatabaseQueryHistory()
+        let executor = MockDatabaseQueryExecutor(defaultResponse: .result(DatabaseQueryResult(rows: [])))
+        let viewModel = DatabaseQueryEditorViewModel(history: history, executor: executor.execute)
+        viewModel.sqlText = "SELECT 1"
+        await viewModel.execute(isReadOnly: false)
+        viewModel.sqlText = "SELECT 2"
+        await viewModel.execute(isReadOnly: false)
+
+        viewModel.sqlText = "draft"
+        viewModel.loadPreviousHistoryEntry()
+        #expect(viewModel.sqlText == "SELECT 2")
+        viewModel.loadPreviousHistoryEntry()
+        #expect(viewModel.sqlText == "SELECT 1")
+        viewModel.loadNextHistoryEntry()
+        #expect(viewModel.sqlText == "SELECT 2")
+        viewModel.loadNextHistoryEntry()
+        #expect(viewModel.sqlText == "draft")
+    }
+
+    @Test
+    func incrementalHistorySearchFiltersMatches() async throws {
+        let history = DatabaseQueryHistory()
+        let executor = MockDatabaseQueryExecutor(defaultResponse: .result(DatabaseQueryResult(rows: [])))
+        let viewModel = DatabaseQueryEditorViewModel(history: history, executor: executor.execute)
+        viewModel.sqlText = "SELECT * FROM artists"
+        await viewModel.execute(isReadOnly: false)
+        viewModel.sqlText = "DELETE FROM albums"
+        await viewModel.execute(isReadOnly: false)
+        viewModel.sqlText = "SELECT * FROM albums WHERE artist_id = 1"
+        await viewModel.execute(isReadOnly: false)
+
+        viewModel.beginHistorySearch()
+        viewModel.historySearchQuery = "albums"
+        try await Task.sleep(for: .milliseconds(10))
+
+        #expect(viewModel.historySearchResults.count == 2)
+        #expect(viewModel.historySearchPreview == "SELECT * FROM albums WHERE artist_id = 1")
+
+        viewModel.selectPreviousHistorySearchMatch()
+        #expect(viewModel.historySearchPreview == "DELETE FROM albums")
+        viewModel.selectNextHistorySearchMatch()
+        #expect(viewModel.historySearchPreview == "SELECT * FROM albums WHERE artist_id = 1")
+        _ = viewModel.acceptHistorySearchMatch()
+        #expect(viewModel.sqlText == "SELECT * FROM albums WHERE artist_id = 1")
+        #expect(viewModel.isHistorySearchPresented == false)
+    }
 }
 
 private enum QueryExecutorError: Error, LocalizedError, Sendable {
