@@ -6,37 +6,69 @@
 //
 
 import SwiftUI
+import TableGlassKit
+#if os(macOS)
+import AppKit
+#endif
 
 @main
 struct TableGlassApp: App {
     @StateObject private var environment: AppEnvironment
-    @StateObject private var connectionListViewModel: ConnectionListViewModel
     @StateObject private var connectionManagementViewModel: ConnectionManagementViewModel
 
     init() {
-        let environment = AppEnvironment.makeDefault()
+        let environment: AppEnvironment
+        let isRunningUITests = ProcessInfo.processInfo.isRunningUITests
+        let isBrowserUITest = ProcessInfo.processInfo.arguments.contains(UITestArguments.databaseBrowser.rawValue)
+
+        if isRunningUITests {
+            environment = AppEnvironment(dependencies: .preview)
+        } else {
+            environment = AppEnvironment.makeDefault()
+        }
         _environment = StateObject(wrappedValue: environment)
-        _connectionListViewModel = StateObject(
-            wrappedValue: environment.makeConnectionListViewModel())
         _connectionManagementViewModel = StateObject(
             wrappedValue: environment.makeConnectionManagementViewModel()
         )
+
+        #if canImport(AppKit)
+        if isRunningUITests {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
+                NSApp.activate(ignoringOtherApps: true)
+                if isBrowserUITest {
+                    NSApp.windows
+                        .filter { $0.title == "Connection Management" }
+                        .forEach { $0.close() }
+                    let browserWindows = NSApp.windows.filter { $0.title == "Database Browser" }
+                    if browserWindows.isEmpty {
+                        environment.openPreviewDatabaseBrowserWindow()
+                    } else {
+                        browserWindows.forEach { $0.makeKeyAndOrderFront(nil) }
+                    }
+                } else {
+                    NSApp.windows
+                        .filter { $0.title == "Database Browser" }
+                        .forEach { $0.close() }
+                    if let connectionWindow = NSApp.windows.first(where: { $0.title.contains("Connection Management") }) {
+                        connectionWindow.makeKeyAndOrderFront(nil)
+                    }
+                }
+            }
+        }
+        #endif
     }
 
     var body: some Scene {
-        WindowGroup {
-            ContentView(viewModel: connectionListViewModel)
-                .environmentObject(environment)
-        }
+        connectionManagementWindow
         .commands {
-            ConnectionManagementCommands()
-            DatabaseBrowserCommands(openStandaloneBrowserWindow: {
-                environment.openStandaloneDatabaseBrowserWindow()
-            })
+            ConnectionWorkflowCommands(
+                environment: environment,
+                connectionManagementViewModel: connectionManagementViewModel
+            )
         }
 
-        connectionManagementWindow
         databaseBrowserWindow
+        uiTestShimWindow
     }
 }
 
@@ -60,35 +92,74 @@ extension TableGlassApp {
         }
         .defaultSize(width: 1080, height: 720)
     }
-}
 
-private struct ConnectionManagementCommands: Commands {
-    @Environment(\.openWindow) private var openWindow
-
-    var body: some Commands {
-        CommandMenu("Connections") {
-            Button("Manage Connections") {
-                openWindow(id: SceneID.connectionManagement.rawValue)
-            }
-            .keyboardShortcut("M", modifiers: [.command, .shift])
+    fileprivate var uiTestShimWindow: some Scene {
+        WindowGroup("UITest Shim", id: SceneID.uiTestShim.rawValue) {
+            UITestShimView()
         }
+        .defaultSize(width: 400, height: 300)
     }
 }
 
-private struct DatabaseBrowserCommands: Commands {
+@MainActor
+private struct ConnectionWorkflowCommands: Commands {
     @Environment(\.openWindow) private var openWindow
-    let openStandaloneBrowserWindow: () -> Void
+    let environment: AppEnvironment
+    let connectionManagementViewModel: ConnectionManagementViewModel
 
     var body: some Commands {
-        CommandMenu("Database Browser") {
-            Button("New Browser Window") {
-                openWindow(id: SceneID.databaseBrowser.rawValue)
+        CommandGroup(replacing: .newItem) {
+            Button("New Connection...") {
+                openConnectionManagement(createNew: true)
+            }
+            .keyboardShortcut("N")
+
+            Button("Manage Connections...") {
+                openConnectionManagement(createNew: false)
+            }
+            .keyboardShortcut("M", modifiers: [.command, .shift])
+
+            Divider()
+
+            Button("New Database Browser Window...") {
+                Task {
+                    await openDatabaseBrowserWindow()
+                }
             }
             .keyboardShortcut("B", modifiers: [.command, .shift])
+        }
+    }
 
-            Button("New Detached Browser Window") {
-                openStandaloneBrowserWindow()
+    private func openConnectionManagement(createNew: Bool) {
+        openWindow(id: SceneID.connectionManagement.rawValue)
+        if createNew {
+            connectionManagementViewModel.startCreatingConnection()
+        }
+    }
+
+    private func openDatabaseBrowserWindow() async {
+        do {
+            let profiles = try await environment.dependencies.connectionStore.listConnections()
+            if profiles.count == 1, let single = profiles.first {
+                try await environment.connectAndOpenBrowser(for: single)
+                return
             }
+
+            if let selection = connectionManagementViewModel.selection,
+               let selected = profiles.first(where: { $0.id == selection }) {
+                try await environment.connectAndOpenBrowser(for: selected)
+                return
+            }
+
+            openConnectionManagement(createNew: profiles.isEmpty)
+            connectionManagementViewModel.presentError(
+                profiles.isEmpty
+                    ? "No saved connections found. Create one to open a browser window."
+                    : "Select a connection to open a Database Browser window."
+            )
+        } catch {
+            openConnectionManagement(createNew: false)
+            connectionManagementViewModel.presentError(error.localizedDescription)
         }
     }
 }

@@ -33,15 +33,22 @@ final class AppEnvironment: ObservableObject {
         )
     }
 
-    func makeDatabaseBrowserViewModel() -> DatabaseBrowserViewModel {
+    func makeDatabaseBrowserViewModel(autoloadSavedConnections: Bool = true) -> DatabaseBrowserViewModel {
         DatabaseBrowserViewModel(
             connectionStore: dependencies.connectionStore,
-            connectionProvider: dependencies.databaseConnectionProvider
+            connectionProvider: dependencies.databaseConnectionProvider,
+            autoloadSavedConnections: autoloadSavedConnections
         )
     }
 
-    func openStandaloneDatabaseBrowserWindow() {
-        let viewModel = makeDatabaseBrowserViewModel()
+    func connectAndOpenBrowser(for profile: ConnectionProfile) async throws {
+        let viewModel = makeDatabaseBrowserViewModel(autoloadSavedConnections: false)
+        try await viewModel.connect(profile: profile)
+        browserWindowCoordinator.openStandaloneWindow(with: viewModel)
+    }
+
+    func openPreviewDatabaseBrowserWindow() {
+        let viewModel = DatabaseBrowserViewModel()
         browserWindowCoordinator.openStandaloneWindow(with: viewModel)
     }
 }

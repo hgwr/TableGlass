@@ -7,6 +7,9 @@ import TableGlassKit
 
 struct DatabaseBrowserWindow: View {
     @StateObject private var viewModel: DatabaseBrowserViewModel
+    private var isBrowserUITest: Bool {
+        ProcessInfo.processInfo.arguments.contains(UITestArguments.databaseBrowser.rawValue)
+    }
 
     init(viewModel: DatabaseBrowserViewModel) {
         _viewModel = StateObject(wrappedValue: viewModel)
@@ -40,12 +43,19 @@ struct DatabaseBrowserWindow: View {
                 }
                 .tabViewStyle(.automatic)
                 .accessibilityIdentifier(DatabaseBrowserAccessibility.tabGroup.rawValue)
-            }
+        }
 #endif
         }
         .task {
-            await viewModel.loadSavedConnections()
+            await viewModel.bootstrap()
         }
+#if os(macOS)
+        .onAppear {
+            if ProcessInfo.processInfo.arguments.contains(UITestArguments.databaseBrowser.rawValue) {
+                NSApp.activate(ignoringOtherApps: true)
+            }
+        }
+#endif
     }
 
 }
@@ -467,6 +477,7 @@ private struct DatabaseObjectTreeList: View {
                 ProgressView("Loading objects…")
                     .controlSize(.small)
                     .padding()
+                    .allowsHitTesting(false)
             } else if let message = session.loadError {
                 VStack(spacing: 8) {
                     Text("Unable to load schema")
@@ -485,6 +496,7 @@ private struct DatabaseObjectTreeList: View {
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
                 .padding()
+                .allowsHitTesting(false)
             } else if session.treeNodes.isEmpty {
                 VStack(spacing: 6) {
                     Text("No objects")
@@ -496,6 +508,7 @@ private struct DatabaseObjectTreeList: View {
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
                 .padding()
+                .allowsHitTesting(false)
             }
         }
     }

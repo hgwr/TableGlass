@@ -39,6 +39,24 @@ struct ConnectionManagementViewModelTests {
         #expect(viewModel.draft.passwordKeychainIdentifier == "fixture.keychain")
     }
 
+    @Test func saveCurrentConnectionReturnsProfile() async throws {
+        let store = MockConnectionStore(connections: [])
+        let viewModel = makeViewModel(store: store)
+
+        viewModel.startCreatingConnection(kind: .postgreSQL)
+        viewModel.updateDraft {
+            $0.name = "Return Profile"
+            $0.host = "localhost"
+            $0.port = 5432
+            $0.username = "postgres"
+        }
+
+        let profile = await viewModel.saveCurrentConnection()
+
+        #expect(profile?.name == "Return Profile")
+        #expect(profile?.id == viewModel.selection)
+    }
+
     @Test func startCreatingConnectionResetsDraft() async throws {
         let profiles = [
             ConnectionProfile(

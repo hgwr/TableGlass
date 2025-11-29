@@ -11,9 +11,12 @@ final class DatabaseBrowserViewModel: ObservableObject {
     private let metadataProviderFactory: @Sendable () -> any DatabaseMetadataProvider
     private let connectionStore: (any ConnectionStore)?
     private let connectionProvider: DatabaseConnectionProvider
+    private let autoloadSavedConnections: Bool
+    private let shouldUsePreviewSessions: Bool
     private var liveConnections: [DatabaseBrowserSessionViewModel.ID: any DatabaseConnection] = [:]
     private var sessionProfiles: [DatabaseBrowserSessionViewModel.ID: ConnectionProfile.ID] = [:]
     private var connectedProfileIDs: Set<ConnectionProfile.ID> = []
+    private var connectingProfileIDs: Set<ConnectionProfile.ID> = []
     private var hasLoadedConnections = false
     private let logger = Logger(subsystem: "com.tableglass", category: "DatabaseBrowser")
 
@@ -23,13 +26,19 @@ final class DatabaseBrowserViewModel: ObservableObject {
             PreviewDatabaseMetadataProvider(schema: .previewBrowserSchema)
         },
         connectionStore: (any ConnectionStore)? = nil,
-        connectionProvider: DatabaseConnectionProvider = .placeholderDrivers
+        connectionProvider: DatabaseConnectionProvider = .placeholderDrivers,
+        autoloadSavedConnections: Bool = true
     ) {
         self.metadataProviderFactory = metadataProviderFactory
         self.connectionStore = connectionStore
         self.connectionProvider = connectionProvider
+        self.autoloadSavedConnections = autoloadSavedConnections
+        self.shouldUsePreviewSessions = ProcessInfo.processInfo.arguments.contains(
+            UITestArguments.databaseBrowser.rawValue
+        )
 
-        if sessions.isEmpty, connectionStore == nil {
+        let shouldBootstrapPreviewSessions = sessions.isEmpty && (connectionStore == nil || shouldUsePreviewSessions)
+        if shouldBootstrapPreviewSessions {
             self.sessions = DatabaseBrowserSessionViewModel.previewSessions(metadataProviderFactory: metadataProviderFactory)
         } else {
             self.sessions = sessions
@@ -50,7 +59,13 @@ final class DatabaseBrowserViewModel: ObservableObject {
         }
     }
 
+    func bootstrap() async {
+        guard autoloadSavedConnections else { return }
+        await loadSavedConnections()
+    }
+
     func loadSavedConnections() async {
+        guard !shouldUsePreviewSessions else { return }
         guard let connectionStore, !hasLoadedConnections else { return }
         hasLoadedConnections = true
 
@@ -65,7 +80,11 @@ final class DatabaseBrowserViewModel: ObservableObject {
             }
 
             for profile in profiles where !connectedProfileIDs.contains(profile.id) {
-                await connect(profile)
+                do {
+                    try await connect(profile: profile)
+                } catch {
+                    logger.error("DB connection failed for saved profile \(profile.name, privacy: .public): \(error.localizedDescription, privacy: .public)")
+                }
             }
         } catch {
             logger.error("Failed to load saved connections: \(error.localizedDescription, privacy: .public)")
@@ -75,7 +94,22 @@ final class DatabaseBrowserViewModel: ObservableObject {
         }
     }
 
-    private func connect(_ profile: ConnectionProfile) async {
+    @discardableResult
+    func connect(profile: ConnectionProfile) async throws -> DatabaseBrowserSessionViewModel {
+        guard !connectingProfileIDs.contains(profile.id),
+              !connectedProfileIDs.contains(profile.id) else {
+            if let existing = sessions.first(where: { sessionProfiles[$0.id] == profile.id }) {
+                return existing
+            }
+            return sessions.first ?? DatabaseBrowserSessionViewModel(
+                databaseName: profile.name,
+                status: .error,
+                isReadOnly: true,
+                metadataProvider: metadataProviderFactory()
+            )
+        }
+
+        connectingProfileIDs.insert(profile.id)
         let connection = connectionProvider.makeConnection(for: profile)
         let tableService = DatabaseConnectionTableDataService(connection: connection)
         let session = DatabaseBrowserSessionViewModel(
@@ -90,24 +124,28 @@ final class DatabaseBrowserViewModel: ObservableObject {
         selectedSessionID = session.id
         liveConnections[session.id] = connection
         sessionProfiles[session.id] = profile.id
-        connectedProfileIDs.insert(profile.id)
 
-        Task {
-            do {
-                logger.info("Attempting DB connection for profile \(profile.name, privacy: .public)")
-                try await connection.connect()
-                await MainActor.run {
-                    session.status = .readOnly
-                }
-                await session.refresh()
-            } catch {
-                logger.error("DB connection failed for profile \(profile.name, privacy: .public): \(error.localizedDescription, privacy: .public)")
-                await MainActor.run {
-                    session.status = .error
-                    session.setLoadError(error.localizedDescription)
-                }
-                await connection.disconnect()
+        do {
+            logger.info("Attempting DB connection for profile \(profile.name, privacy: .public)")
+            try await connection.connect()
+            connectedProfileIDs.insert(profile.id)
+            await MainActor.run {
+                session.status = .readOnly
             }
+            await session.refresh()
+            connectingProfileIDs.remove(profile.id)
+            return session
+        } catch {
+            connectingProfileIDs.remove(profile.id)
+            await MainActor.run {
+                session.status = .error
+                session.setLoadError(error.localizedDescription)
+            }
+            await connection.disconnect()
+            liveConnections.removeValue(forKey: session.id)
+            sessionProfiles.removeValue(forKey: session.id)
+            connectedProfileIDs.remove(profile.id)
+            throw error
         }
     }
 
