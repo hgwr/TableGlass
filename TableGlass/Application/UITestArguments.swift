@@ -20,8 +20,7 @@ extension ProcessInfo {
         }
 
         let args = arguments
-        return args.contains("-ApplePersistenceIgnoreState")
-            || args.contains(UITestArguments.databaseBrowser.rawValue)
+        return args.contains(UITestArguments.databaseBrowser.rawValue)
             || args.contains(UITestArguments.uiTesting.rawValue)
     }
 }
