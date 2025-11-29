@@ -228,6 +228,7 @@ private struct HistorySearchOverlay: View {
 
     private func startMonitoringKeys() {
         #if os(macOS)
+        stopMonitoringKeys()
         keyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
             guard viewModel.isHistorySearchPresented else { return event }
             switch event.specialKey {
