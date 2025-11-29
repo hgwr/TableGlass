@@ -164,9 +164,7 @@ private struct DatabaseBrowserSessionView: View {
         queryEditorViewModel.sqlText = sql
         detailDisplayMode = .results
 
-        Task {
-            await queryEditorViewModel.execute(isReadOnly: session.isReadOnly)
-        }
+        queryEditorViewModel.requestExecute(isReadOnly: session.isReadOnly)
     }
 
     private var header: some View {

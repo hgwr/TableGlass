@@ -52,7 +52,7 @@ struct DatabaseQueryEditorView: View {
     private var executeButton: some View {
         Button {
             onExecute?()
-            Task { await viewModel.execute(isReadOnly: isReadOnly) }
+            viewModel.requestExecute(isReadOnly: isReadOnly)
         } label: {
             Label("Run", systemImage: "play.fill")
         }
@@ -187,7 +187,7 @@ struct DatabaseQueryResultSection: View {
                 Spacer()
                 Button("Retry") {
                     onExecute?()
-                    Task { await viewModel.execute(isReadOnly: isReadOnly) }
+                    viewModel.requestExecute(isReadOnly: isReadOnly)
                 }
                 .buttonStyle(.bordered)
             }
