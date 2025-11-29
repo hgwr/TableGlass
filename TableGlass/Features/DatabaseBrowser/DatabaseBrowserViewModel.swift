@@ -38,8 +38,15 @@ final class DatabaseBrowserViewModel: ObservableObject {
     }
 
     deinit {
-        Task {
-            await disconnectAll()
+        let connections = Array(liveConnections.values)
+        liveConnections.removeAll()
+        sessionProfiles.removeAll()
+        connectedProfileIDs.removeAll()
+
+        Task.detached(priority: .background) {
+            for connection in connections {
+                await connection.disconnect()
+            }
         }
     }
 
@@ -148,14 +155,6 @@ final class DatabaseBrowserViewModel: ObservableObject {
         "Database Browser"
     }
 
-    private func disconnectAll() async {
-        for connection in liveConnections.values {
-            await connection.disconnect()
-        }
-        liveConnections.removeAll()
-        sessionProfiles.removeAll()
-        connectedProfileIDs.removeAll()
-    }
 }
 
 private extension DatabaseAccessMode {
