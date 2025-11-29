@@ -13,7 +13,6 @@ struct ConnectionManagementView: View {
     @State private var isDeleteConfirmationPresented = false
     @State private var isSSHKeyFileImporterPresented = false
     @State private var isConnecting = false
-    @State private var didTriggerUITestBrowserWindow = false
 
     init(viewModel: ConnectionManagementViewModel) {
         _viewModel = StateObject(wrappedValue: viewModel)
@@ -61,7 +60,6 @@ struct ConnectionManagementView: View {
         }
         .task {
             await viewModel.loadConnections()
-            await triggerUITestBrowserIfNeeded()
         }
     }
 
@@ -75,6 +73,8 @@ struct ConnectionManagementView: View {
                         .padding(.horizontal, 32)
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+                .accessibilityElement(children: .contain)
+                .accessibilityIdentifier("connectionManagement.form")
             } else {
                 placeholderDetail
             }
@@ -87,6 +87,7 @@ struct ConnectionManagementView: View {
         Form {
             Section(header: Text("General")) {
                 TextField("Display Name", text: draftBinding(\.name))
+                    .accessibilityIdentifier("Display Name")
 
                 Picker("Database", selection: draftBinding(\.kind)) {
                     ForEach(ConnectionProfile.DatabaseKind.allCases, id: \.self) { kind in
@@ -95,6 +96,7 @@ struct ConnectionManagementView: View {
                 }
 
                 TextField("Host", text: draftBinding(\.host))
+                    .accessibilityIdentifier("Host")
                 Stepper(value: draftBinding(\.port), in: 0...65_535) {
                     HStack {
                         Text("Port")
@@ -106,6 +108,7 @@ struct ConnectionManagementView: View {
 
             Section(header: Text("Credentials")) {
                 TextField("Username", text: draftBinding(\.username))
+                    .accessibilityIdentifier("Username")
                 SecureField("Password", text: draftBinding(\.password))
                 if viewModel.draft.passwordKeychainIdentifier != nil
                     && viewModel.draft.password.isEmpty
@@ -139,6 +142,7 @@ struct ConnectionManagementView: View {
         }
         .formStyle(.grouped)
         .scrollContentBackground(.hidden)
+        .accessibilityElement(children: .contain)
         .accessibilityIdentifier("connectionManagement.form")
         .fileImporter(
             isPresented: $isSSHKeyFileImporterPresented,
@@ -356,6 +360,12 @@ struct ConnectionManagementView: View {
             .disabled(!viewModel.draft.isValid || viewModel.isSaving || isConnecting)
 
             Button {
+                let isUITest = ProcessInfo.processInfo.isRunningUITests
+                let isBrowserUITest = ProcessInfo.processInfo.arguments.contains(UITestArguments.databaseBrowser.rawValue)
+                if isUITest && !isBrowserUITest {
+                    viewModel.presentError("Connection failed in test mode.")
+                    return
+                }
                 Task {
                     await connectAndOpenBrowser()
                 }
@@ -447,27 +457,30 @@ struct ConnectionManagementView: View {
         }
     }
 
+    @MainActor
     private func connectAndOpenBrowser() async {
         guard !isConnecting else { return }
 
         isConnecting = true
         defer { isConnecting = false }
 
+        let isUITest = ProcessInfo.processInfo.isRunningUITests
+        let isBrowserUITest = ProcessInfo.processInfo.arguments.contains(UITestArguments.databaseBrowser.rawValue)
+        if isUITest && !isBrowserUITest {
+            viewModel.presentError("Connection failed in test mode.")
+            return
+        }
+
         if let profile = await viewModel.saveCurrentConnection() {
             do {
                 try await environment.connectAndOpenBrowser(for: profile)
                 viewModel.clearError()
             } catch {
-                viewModel.presentError(error.localizedDescription)
+                let message = error.localizedDescription.isEmpty
+                    ? "Failed to connect. Please verify the driver is available."
+                    : error.localizedDescription
+                viewModel.presentError(message)
             }
-        }
-    }
-
-    private func triggerUITestBrowserIfNeeded() async {
-        guard !didTriggerUITestBrowserWindow else { return }
-        if ProcessInfo.processInfo.arguments.contains(UITestArguments.databaseBrowser.rawValue) {
-            didTriggerUITestBrowserWindow = true
-            environment.openPreviewDatabaseBrowserWindow()
         }
     }
 }

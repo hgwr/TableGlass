@@ -24,8 +24,17 @@ final class DatabaseBrowserWindowCoordinator: NSObject {
         let hostingController = NSHostingController(rootView: DatabaseBrowserWindow(viewModel: viewModel))
         window.title = viewModel.windowTitle
         window.contentViewController = hostingController
+        if ProcessInfo.processInfo.isRunningUITests {
+            window.setFrame(NSRect(x: 200, y: 200, width: 960, height: 640), display: true)
+        } else {
+            window.center()
+        }
         let windowController = NSWindowController(window: window)
         windowController.showWindow(nil)
+        if ProcessInfo.processInfo.arguments.contains(UITestArguments.databaseBrowser.rawValue) {
+            NSApp.activate(ignoringOtherApps: true)
+            window.makeKeyAndOrderFront(nil)
+        }
         controllers.append(windowController)
         #else
         // Intentionally left blank for non-macOS platforms.

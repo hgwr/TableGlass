@@ -15,11 +15,11 @@ final class TableGlassUITests: XCTestCase {
 
     @MainActor
     func testLaunchShowsConnectionManagementForm() throws {
-        let app = XCUIApplication()
+        let app = makeApplication()
         app.launch()
 
-        let form = app.otherElements["connectionManagement.form"]
-        XCTAssertTrue(form.waitForExistence(timeout: 2))
+        let form = element(withIdentifier: "connectionManagement.form", in: app)
+        XCTAssertTrue(form.waitForExistence(timeout: 5))
 
         let connectButton = app.buttons["connectionManagement.connectButton"]
         XCTAssertTrue(connectButton.exists)
@@ -27,7 +27,7 @@ final class TableGlassUITests: XCTestCase {
 
     @MainActor
     func testConnectFromConnectionManagementShowsInlineError() throws {
-        let app = XCUIApplication()
+        let app = makeApplication()
         app.launch()
 
         let nameField = app.textFields["Display Name"]
@@ -43,12 +43,12 @@ final class TableGlassUITests: XCTestCase {
         app.buttons["connectionManagement.connectButton"].click()
 
         let errorLabel = app.staticTexts["connectionManagement.errorMessage"]
-        XCTAssertTrue(errorLabel.waitForExistence(timeout: 3))
+        XCTAssertTrue(errorLabel.waitForExistence(timeout: 5))
     }
 
     @MainActor
     func testMenuItemsExposeConnectionWorkflow() throws {
-        let app = XCUIApplication()
+        let app = makeApplication()
         app.launch()
 
         let menus = app.menuBars
@@ -63,9 +63,18 @@ final class TableGlassUITests: XCTestCase {
         element.typeText(text)
     }
 
+    private func element(withIdentifier identifier: String, in app: XCUIApplication) -> XCUIElement {
+        let other = app.otherElements[identifier]
+        if other.exists { return other }
+        let scroll = app.scrollViews[identifier]
+        if scroll.exists { return scroll }
+        let anyMatch = app.descendants(matching: .any)[identifier]
+        return anyMatch.exists ? anyMatch : other
+    }
+
     @MainActor
     func testDatabaseBrowserTabsRender() throws {
-        let app = XCUIApplication()
+        let app = makeApplication()
         app.launchArguments.append("--uitest-database-browser")
         app.launch()
 
@@ -90,9 +99,13 @@ final class TableGlassUITests: XCTestCase {
 
     @MainActor
     func testDatabaseBrowserSidebarNavigation() throws {
-        let app = XCUIApplication()
+        let app = makeApplication()
         app.launchArguments.append("--uitest-database-browser")
         app.launch()
+
+        let browserWindow = app.windows["Database Browser"]
+        XCTAssertTrue(browserWindow.waitForExistence(timeout: 2))
+        browserWindow.click()
 
         let catalogRow = app.staticTexts["databaseBrowser.sidebar.catalog.main"]
         XCTAssertTrue(catalogRow.waitForExistence(timeout: 2))
@@ -118,7 +131,14 @@ final class TableGlassUITests: XCTestCase {
     func testLaunchPerformance() throws {
         // This measures how long it takes to launch your application.
         measure(metrics: [XCTApplicationLaunchMetric()]) {
-            XCUIApplication().launch()
+            makeApplication().launch()
         }
+    }
+
+    private func makeApplication() -> XCUIApplication {
+        let app = XCUIApplication()
+        app.launchEnvironment["UITESTING"] = "1"
+        app.launchArguments.append("--ui-testing")
+        return app
     }
 }

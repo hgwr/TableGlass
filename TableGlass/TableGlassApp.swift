@@ -6,6 +6,10 @@
 //
 
 import SwiftUI
+import TableGlassKit
+#if os(macOS)
+import AppKit
+#endif
 
 @main
 struct TableGlassApp: App {
@@ -13,11 +17,45 @@ struct TableGlassApp: App {
     @StateObject private var connectionManagementViewModel: ConnectionManagementViewModel
 
     init() {
-        let environment = AppEnvironment.makeDefault()
+        let environment: AppEnvironment
+        let isRunningUITests = ProcessInfo.processInfo.isRunningUITests
+        let isBrowserUITest = ProcessInfo.processInfo.arguments.contains(UITestArguments.databaseBrowser.rawValue)
+
+        if isRunningUITests {
+            environment = AppEnvironment(dependencies: .preview)
+        } else {
+            environment = AppEnvironment.makeDefault()
+        }
         _environment = StateObject(wrappedValue: environment)
         _connectionManagementViewModel = StateObject(
             wrappedValue: environment.makeConnectionManagementViewModel()
         )
+
+        #if canImport(AppKit)
+        if isRunningUITests {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
+                NSApp.activate(ignoringOtherApps: true)
+                if isBrowserUITest {
+                    NSApp.windows
+                        .filter { $0.title == "Connection Management" }
+                        .forEach { $0.close() }
+                    let browserWindows = NSApp.windows.filter { $0.title == "Database Browser" }
+                    if browserWindows.isEmpty {
+                        environment.openPreviewDatabaseBrowserWindow()
+                    } else {
+                        browserWindows.forEach { $0.makeKeyAndOrderFront(nil) }
+                    }
+                } else {
+                    NSApp.windows
+                        .filter { $0.title == "Database Browser" }
+                        .forEach { $0.close() }
+                    if let connectionWindow = NSApp.windows.first(where: { $0.title.contains("Connection Management") }) {
+                        connectionWindow.makeKeyAndOrderFront(nil)
+                    }
+                }
+            }
+        }
+        #endif
     }
 
     var body: some Scene {
@@ -30,6 +68,7 @@ struct TableGlassApp: App {
         }
 
         databaseBrowserWindow
+        uiTestShimWindow
     }
 }
 
@@ -52,6 +91,13 @@ extension TableGlassApp {
                 .frame(minWidth: 900, minHeight: 600)
         }
         .defaultSize(width: 1080, height: 720)
+    }
+
+    fileprivate var uiTestShimWindow: some Scene {
+        WindowGroup("UITest Shim", id: SceneID.uiTestShim.rawValue) {
+            UITestShimView()
+        }
+        .defaultSize(width: 400, height: 300)
     }
 }
 
