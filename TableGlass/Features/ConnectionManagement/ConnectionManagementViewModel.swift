@@ -368,10 +368,15 @@ final class ConnectionManagementViewModel: ObservableObject {
         lastError = nil
     }
 
-    func saveCurrentConnection() async {
+    func presentError(_ message: String) {
+        lastError = message
+    }
+
+    @discardableResult
+    func saveCurrentConnection() async -> ConnectionProfile? {
         guard draft.isValid else {
             lastError = "Please complete the required fields."
-            return
+            return nil
         }
 
         isSaving = true
@@ -394,8 +399,10 @@ final class ConnectionManagementViewModel: ObservableObject {
                 applySelection(id: profile.id)
             }
             lastError = nil
+            return profile
         } catch {
             lastError = error.localizedDescription
+            return nil
         }
     }
 

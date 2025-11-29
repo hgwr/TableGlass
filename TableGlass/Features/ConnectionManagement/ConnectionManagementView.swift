@@ -8,9 +8,12 @@ import AppKit
 #endif
 
 struct ConnectionManagementView: View {
+    @EnvironmentObject private var environment: AppEnvironment
     @StateObject private var viewModel: ConnectionManagementViewModel
     @State private var isDeleteConfirmationPresented = false
     @State private var isSSHKeyFileImporterPresented = false
+    @State private var isConnecting = false
+    @State private var didTriggerUITestBrowserWindow = false
 
     init(viewModel: ConnectionManagementViewModel) {
         _viewModel = StateObject(wrappedValue: viewModel)
@@ -49,6 +52,7 @@ struct ConnectionManagementView: View {
                 } label: {
                     Label("New Connection", systemImage: "plus")
                 }
+                .accessibilityIdentifier("connectionManagement.newConnectionButton")
                 .buttonStyle(.borderedProminent)
                 .padding()
             }
@@ -57,15 +61,7 @@ struct ConnectionManagementView: View {
         }
         .task {
             await viewModel.loadConnections()
-        }
-        .alert("Error", isPresented: errorBinding) {
-            Button("Dismiss", role: .cancel) {
-                viewModel.clearError()
-            }
-        } message: {
-            if let message = viewModel.lastError {
-                Text(message)
-            }
+            await triggerUITestBrowserIfNeeded()
         }
     }
 
@@ -139,9 +135,11 @@ struct ConnectionManagementView: View {
             }
 
             footerButtons
+            errorCallout
         }
         .formStyle(.grouped)
         .scrollContentBackground(.hidden)
+        .accessibilityIdentifier("connectionManagement.form")
         .fileImporter(
             isPresented: $isSSHKeyFileImporterPresented,
             allowedContentTypes: [.item],
@@ -341,20 +339,33 @@ struct ConnectionManagementView: View {
             } label: {
                 Label("Delete", systemImage: "trash")
             }
-            .disabled(viewModel.isNewConnection || viewModel.selection == nil)
+            .disabled(viewModel.isNewConnection || viewModel.selection == nil || isConnecting)
 
             Spacer()
 
             Button {
                 Task {
-                    await viewModel.saveCurrentConnection()
+                    _ = await viewModel.saveCurrentConnection()
                 }
             } label: {
                 Label(
                     viewModel.isNewConnection ? "Create" : "Save",
                     systemImage: "tray.and.arrow.down")
             }
-            .disabled(!viewModel.draft.isValid || viewModel.isSaving)
+            .accessibilityIdentifier("connectionManagement.saveButton")
+            .disabled(!viewModel.draft.isValid || viewModel.isSaving || isConnecting)
+
+            Button {
+                Task {
+                    await connectAndOpenBrowser()
+                }
+            } label: {
+                Label("Connect", systemImage: "link")
+            }
+            .accessibilityIdentifier("connectionManagement.connectButton")
+            .keyboardShortcut(.defaultAction)
+            .buttonStyle(.borderedProminent)
+            .disabled(!viewModel.draft.isValid || viewModel.isSaving || isConnecting)
         }
         .alert("Delete Connection?", isPresented: $isDeleteConfirmationPresented) {
             Button("Delete", role: .destructive) {
@@ -370,15 +381,30 @@ struct ConnectionManagementView: View {
         }
     }
 
-    private var errorBinding: Binding<Bool> {
-        Binding(
-            get: { viewModel.lastError != nil },
-            set: { presented in
-                if !presented {
-                    viewModel.clearError()
+    private var errorCallout: some View {
+        Group {
+            if let message = viewModel.lastError {
+                HStack(alignment: .firstTextBaseline, spacing: 8) {
+                    Image(systemName: "exclamationmark.triangle.fill")
+                        .foregroundStyle(.orange)
+                    Text(message)
+                        .font(.callout)
+                        .foregroundStyle(.primary)
+                        .accessibilityIdentifier("connectionManagement.errorMessage")
+                    Spacer()
+                    Button {
+                        viewModel.clearError()
+                    } label: {
+                        Image(systemName: "xmark.circle.fill")
+                    }
+                    .buttonStyle(.borderless)
+                    .help("Dismiss error")
                 }
+                .padding(10)
+                .background(Color(nsColor: .controlBackgroundColor))
+                .clipShape(RoundedRectangle(cornerRadius: 8))
             }
-        )
+        }
     }
 
     private func draftBinding<Value>(_ keyPath: WritableKeyPath<ConnectionDraft, Value>) -> Binding<
@@ -418,6 +444,30 @@ struct ConnectionManagementView: View {
             return "Username & Password"
         case .sshAgent:
             return "SSH Agent"
+        }
+    }
+
+    private func connectAndOpenBrowser() async {
+        guard !isConnecting else { return }
+
+        isConnecting = true
+        defer { isConnecting = false }
+
+        if let profile = await viewModel.saveCurrentConnection() {
+            do {
+                try await environment.connectAndOpenBrowser(for: profile)
+                viewModel.clearError()
+            } catch {
+                viewModel.presentError(error.localizedDescription)
+            }
+        }
+    }
+
+    private func triggerUITestBrowserIfNeeded() async {
+        guard !didTriggerUITestBrowserWindow else { return }
+        if ProcessInfo.processInfo.arguments.contains(UITestArguments.databaseBrowser.rawValue) {
+            didTriggerUITestBrowserWindow = true
+            environment.openPreviewDatabaseBrowserWindow()
         }
     }
 }

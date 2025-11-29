@@ -40,11 +40,11 @@ struct DatabaseBrowserWindow: View {
                 }
                 .tabViewStyle(.automatic)
                 .accessibilityIdentifier(DatabaseBrowserAccessibility.tabGroup.rawValue)
-            }
+        }
 #endif
         }
         .task {
-            await viewModel.loadSavedConnections()
+            await viewModel.bootstrap()
         }
     }
 
