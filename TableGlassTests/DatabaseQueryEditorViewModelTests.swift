@@ -6,6 +6,12 @@ import Testing
 
 @MainActor
 struct DatabaseQueryEditorViewModelTests {
+    private final class InMemoryHistoryStore: QueryHistoryPersisting, @unchecked Sendable {
+        var storage: [String] = []
+
+        func load() -> [String] { storage }
+        func save(_ entries: [String]) { storage = entries }
+    }
 
     @Test
     func executesQueriesAndPublishesResults() async throws {
@@ -115,7 +121,7 @@ struct DatabaseQueryEditorViewModelTests {
 
     @Test
     func recordsHistoryEntriesAndDeduplicates() async throws {
-        let history = DatabaseQueryHistory()
+        let history = DatabaseQueryHistory(persistence: InMemoryHistoryStore())
         let executor = MockDatabaseQueryExecutor(
             routes: [
                 .sqlEquals(
@@ -144,7 +150,7 @@ struct DatabaseQueryEditorViewModelTests {
 
     @Test
     func historyNavigationRestoresUnsubmittedText() async throws {
-        let history = DatabaseQueryHistory()
+        let history = DatabaseQueryHistory(persistence: InMemoryHistoryStore())
         let executor = MockDatabaseQueryExecutor(defaultResponse: .result(DatabaseQueryResult(rows: [])))
         let viewModel = DatabaseQueryEditorViewModel(history: history, executor: executor.execute)
         viewModel.sqlText = "SELECT 1"
@@ -165,7 +171,7 @@ struct DatabaseQueryEditorViewModelTests {
 
     @Test
     func incrementalHistorySearchFiltersMatches() async throws {
-        let history = DatabaseQueryHistory()
+        let history = DatabaseQueryHistory(persistence: InMemoryHistoryStore())
         let executor = MockDatabaseQueryExecutor(defaultResponse: .result(DatabaseQueryResult(rows: [])))
         let viewModel = DatabaseQueryEditorViewModel(history: history, executor: executor.execute)
         viewModel.sqlText = "SELECT * FROM artists"
