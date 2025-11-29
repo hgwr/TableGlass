@@ -182,6 +182,32 @@ struct DatabaseBrowserSessionViewModelTests {
         #expect(state.hasAcknowledged == false)
         #expect(state.isApplying == false)
     }
+
+    @Test
+    func defaultSelectSQLQuotesIdentifiers() {
+        let identifier = DatabaseTableIdentifier(
+            catalog: "main",
+            namespace: "public",
+            name: "albums \"live\""
+        )
+
+        let sql = identifier.defaultSelectSQL(limit: 50)
+
+        #expect(sql == #"SELECT * FROM "public"."albums ""live""" LIMIT 50;"#)
+    }
+
+    @Test
+    func defaultSelectSQLHandlesEmptySchemaAndLimit() {
+        let identifier = DatabaseTableIdentifier(
+            catalog: "main",
+            namespace: "",
+            name: "artists"
+        )
+
+        let sql = identifier.defaultSelectSQL(limit: 0)
+
+        #expect(sql == #"SELECT * FROM "artists" LIMIT 1;"#)
+    }
 }
 
 private actor RecordingModeController: DatabaseSessionModeControlling {

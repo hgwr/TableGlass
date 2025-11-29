@@ -72,7 +72,9 @@ private struct DatabaseBrowserSessionView: View {
     @State private var modeConfirmation = ModeChangeConfirmationState()
     @State private var requestedAccessMode: DatabaseAccessMode?
     @State private var toggleState: Bool
+    @State private var detailDisplayMode: DetailDisplayMode = .results
     private let logger = Logger(subsystem: "com.tableglass", category: "DatabaseBrowser.SessionView")
+    private let defaultSelectLimit = 50
 
     init(
         session: DatabaseBrowserSessionViewModel,
@@ -117,6 +119,9 @@ private struct DatabaseBrowserSessionView: View {
         .onChange(of: session.isReadOnly) { _, newValue in
             toggleState = newValue
         }
+        .onChange(of: session.selectedNodeID) { _, _ in
+            handleSelectionChange()
+        }
     }
 
     private func prepareModeChange(for mode: DatabaseAccessMode) {
@@ -147,6 +152,19 @@ private struct DatabaseBrowserSessionView: View {
             isShowingModeConfirmation = false
             requestedAccessMode = nil
         }
+    }
+
+    private func handleSelectionChange() {
+        if selectedTableIdentifier == nil && detailDisplayMode == .tableEditor {
+            detailDisplayMode = .results
+        }
+
+        guard let table = selectedTableIdentifier else { return }
+        let sql = table.defaultSelectSQL(limit: defaultSelectLimit)
+        queryEditorViewModel.sqlText = sql
+        detailDisplayMode = .results
+
+        queryEditorViewModel.requestExecute(isReadOnly: session.isReadOnly)
     }
 
     private var header: some View {
@@ -242,7 +260,9 @@ private struct DatabaseBrowserSessionView: View {
         VStack(alignment: .leading, spacing: 12) {
             DatabaseQueryEditorView(
                 viewModel: queryEditorViewModel,
-                isReadOnly: session.isReadOnly
+                isReadOnly: session.isReadOnly,
+                showsResultsInline: false,
+                onExecute: { detailDisplayMode = .results }
             )
             Divider()
             detailHeader
@@ -278,26 +298,61 @@ private struct DatabaseBrowserSessionView: View {
     }
 
     private var detailContent: some View {
-        Group {
-            if let node = session.selectedNode {
-                switch node.kind {
-                case .table(let catalog, let namespace, let name):
+        let isTableSelected = selectedTableIdentifier != nil
+
+        return VStack(alignment: .leading, spacing: 12) {
+            if isTableSelected {
+                detailModePicker
+            }
+
+            switch effectiveDetailMode {
+            case .results:
+                DatabaseQueryResultSection(
+                    viewModel: queryEditorViewModel,
+                    isReadOnly: session.isReadOnly,
+                    onExecute: { detailDisplayMode = .results }
+                )
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+            case .tableEditor:
+                if let table = selectedTableIdentifier {
                     DatabaseTableContentView(
                         viewModel: tableContentViewModel,
-                        table: DatabaseTableIdentifier(catalog: catalog, namespace: namespace, name: name),
-                        columns: node.table?.columns ?? [],
+                        table: table,
+                        columns: selectedTableColumns,
                         isReadOnly: session.isReadOnly
                     )
                     .accessibilityIdentifier(DatabaseBrowserAccessibility.tableDetail.rawValue)
-                default:
+                } else {
                     Text("Select a table to view and edit its data.")
                         .foregroundStyle(.secondary)
                         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
                 }
-            } else {
-                Spacer()
             }
         }
+    }
+
+    private var selectedTableIdentifier: DatabaseTableIdentifier? {
+        session.selectedNode?.tableIdentifier
+    }
+
+    private var selectedTableColumns: [DatabaseColumn] {
+        session.selectedNode?.table?.columns ?? []
+    }
+
+    private var effectiveDetailMode: DetailDisplayMode {
+        if selectedTableIdentifier == nil && detailDisplayMode == .tableEditor {
+            return .results
+        }
+        return detailDisplayMode
+    }
+
+    private var detailModePicker: some View {
+        Picker("Detail Mode", selection: $detailDisplayMode) {
+            Text("Results").tag(DetailDisplayMode.results)
+            Text("Table Editor").tag(DetailDisplayMode.tableEditor)
+        }
+        .pickerStyle(.segmented)
+        .frame(maxWidth: 320)
     }
 
     private func pathDescription(for node: DatabaseObjectTreeNode) -> String {
@@ -314,6 +369,11 @@ private struct DatabaseBrowserSessionView: View {
             return "\(catalog).\(namespace).\(name)"
         }
     }
+}
+
+private enum DetailDisplayMode: Hashable {
+    case results
+    case tableEditor
 }
 
 struct ModeChangeConfirmationState {

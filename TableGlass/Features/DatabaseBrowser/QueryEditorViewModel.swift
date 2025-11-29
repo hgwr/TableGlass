@@ -10,10 +10,18 @@ final class DatabaseQueryEditorViewModel: ObservableObject {
     @Published private(set) var errorMessage: String?
 
     private let executor: @Sendable (DatabaseQueryRequest) async throws -> DatabaseQueryResult
+    private var queuedExecutionReadOnly: Bool?
 
     init(sqlText: String = "SELECT * FROM artists LIMIT 50", executor: @escaping @Sendable (DatabaseQueryRequest) async throws -> DatabaseQueryResult) {
         self.sqlText = sqlText
         self.executor = executor
+    }
+
+    func requestExecute(isReadOnly: Bool) {
+        queuedExecutionReadOnly = isReadOnly
+        Task { @MainActor in
+            await self.runQueuedExecutesIfNeeded()
+        }
     }
 
     func execute(isReadOnly: Bool) async {
@@ -27,7 +35,14 @@ final class DatabaseQueryEditorViewModel: ObservableObject {
 
         isExecuting = true
         errorMessage = nil
-        defer { isExecuting = false }
+        defer {
+            isExecuting = false
+            if queuedExecutionReadOnly != nil {
+                Task { @MainActor in
+                    await self.runQueuedExecutesIfNeeded()
+                }
+            }
+        }
 
         do {
             let request = DatabaseQueryRequest(sql: sql)
@@ -35,6 +50,14 @@ final class DatabaseQueryEditorViewModel: ObservableObject {
         } catch {
             result = nil
             errorMessage = error.localizedDescription
+        }
+    }
+
+    private func runQueuedExecutesIfNeeded() async {
+        guard !isExecuting else { return }
+        while let readOnly = queuedExecutionReadOnly {
+            queuedExecutionReadOnly = nil
+            await execute(isReadOnly: readOnly)
         }
     }
 
