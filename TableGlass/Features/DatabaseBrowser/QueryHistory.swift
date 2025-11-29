@@ -61,10 +61,12 @@ actor DatabaseQueryHistory {
     }
 
     func snapshot() -> [String] {
-        Array(entries.reversed())
+        synchronizeWithPersistence()
+        return Array(entries.reversed())
     }
 
     func search(containing query: String) -> [String] {
+        synchronizeWithPersistence()
         let normalizedQuery = query
             .trimmingCharacters(in: .whitespacesAndNewlines)
             .lowercased()
@@ -79,6 +81,9 @@ actor DatabaseQueryHistory {
     }
 
     private func append(_ sql: String, shouldPersist: Bool) {
+        if shouldPersist {
+            synchronizeWithPersistence()
+        }
         let normalized = normalize(sql)
         guard !normalized.isEmpty else { return }
         if entries.last == normalized {
@@ -98,6 +103,9 @@ actor DatabaseQueryHistory {
     }
 
     private func append(contentsOf entries: [String], shouldPersist: Bool) {
+        if shouldPersist {
+            synchronizeWithPersistence()
+        }
         var didChange = false
         for sql in entries {
             let before = self.entries
@@ -111,6 +119,21 @@ actor DatabaseQueryHistory {
 
     private func persist() {
         persistence?.save(entries)
+    }
+
+    private func synchronizeWithPersistence() {
+        guard let persistence else { return }
+        let persisted = persistence.load()
+        guard !persisted.isEmpty else { return }
+        entries = applyCapacity(to: persisted)
+    }
+
+    private func applyCapacity(to entries: [String]) -> [String] {
+        if entries.count <= capacity {
+            return entries
+        }
+        let excess = entries.count - capacity
+        return Array(entries.dropFirst(excess))
     }
 
     private func normalize(_ sql: String) -> String {

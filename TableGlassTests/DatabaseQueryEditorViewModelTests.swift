@@ -196,6 +196,23 @@ struct DatabaseQueryEditorViewModelTests {
         #expect(viewModel.sqlText == "SELECT * FROM albums WHERE artist_id = 1")
         #expect(viewModel.isHistorySearchPresented == false)
     }
+
+    @Test
+    func historyPersistenceMergesAcrossSessions() async throws {
+        let store = InMemoryHistoryStore()
+        let historyA = DatabaseQueryHistory(capacity: 10, persistence: store)
+        let historyB = DatabaseQueryHistory(capacity: 10, persistence: store)
+
+        await historyA.append("SELECT 1")
+        await historyB.append("SELECT 2")
+        await historyA.append("SELECT 3")
+
+        let combinedA = await historyA.snapshot()
+        let combinedB = await historyB.snapshot()
+
+        #expect(combinedA == ["SELECT 3", "SELECT 2", "SELECT 1"])
+        #expect(combinedB == combinedA)
+    }
 }
 
 private enum QueryExecutorError: Error, LocalizedError, Sendable {
