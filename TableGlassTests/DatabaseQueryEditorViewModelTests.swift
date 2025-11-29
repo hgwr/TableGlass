@@ -6,6 +6,12 @@ import Testing
 
 @MainActor
 struct DatabaseQueryEditorViewModelTests {
+    private final class InMemoryHistoryStore: QueryHistoryPersisting, @unchecked Sendable {
+        var storage: [String] = []
+
+        func load() -> [String] { storage }
+        func save(_ entries: [String]) { storage = entries }
+    }
 
     @Test
     func executesQueriesAndPublishesResults() async throws {
@@ -111,6 +117,101 @@ struct DatabaseQueryEditorViewModelTests {
         #expect(entries.count == 1)
         #expect(entries.first?.sql == "SELECT * FROM artists")
         #expect(entries.first?.outcome == .success)
+    }
+
+    @Test
+    func recordsHistoryEntriesAndDeduplicates() async throws {
+        let history = DatabaseQueryHistory(persistence: InMemoryHistoryStore())
+        let executor = MockDatabaseQueryExecutor(
+            routes: [
+                .sqlEquals(
+                    "SELECT * FROM artists",
+                    response: .result(DatabaseQueryResult(rows: [DatabaseQueryRow(values: [:])]))
+                ),
+                .sqlEquals(
+                    "DELETE FROM tracks",
+                    response: .result(DatabaseQueryResult(rows: []))
+                )
+            ],
+            defaultResponse: .result(DatabaseQueryResult(rows: []))
+        )
+
+        let viewModel = DatabaseQueryEditorViewModel(history: history, executor: executor.execute)
+        viewModel.sqlText = "SELECT * FROM artists"
+        await viewModel.execute(isReadOnly: false)
+        viewModel.sqlText = "SELECT * FROM artists"
+        await viewModel.execute(isReadOnly: false)
+        viewModel.sqlText = "DELETE FROM tracks"
+        await viewModel.execute(isReadOnly: false)
+
+        let snapshot = await history.snapshot()
+        #expect(snapshot == ["DELETE FROM tracks", "SELECT * FROM artists"])
+    }
+
+    @Test
+    func historyNavigationRestoresUnsubmittedText() async throws {
+        let history = DatabaseQueryHistory(persistence: InMemoryHistoryStore())
+        let executor = MockDatabaseQueryExecutor(defaultResponse: .result(DatabaseQueryResult(rows: [])))
+        let viewModel = DatabaseQueryEditorViewModel(history: history, executor: executor.execute)
+        viewModel.sqlText = "SELECT 1"
+        await viewModel.execute(isReadOnly: false)
+        viewModel.sqlText = "SELECT 2"
+        await viewModel.execute(isReadOnly: false)
+
+        viewModel.sqlText = "draft"
+        viewModel.loadPreviousHistoryEntry()
+        #expect(viewModel.sqlText == "SELECT 2")
+        viewModel.loadPreviousHistoryEntry()
+        #expect(viewModel.sqlText == "SELECT 1")
+        viewModel.loadNextHistoryEntry()
+        #expect(viewModel.sqlText == "SELECT 2")
+        viewModel.loadNextHistoryEntry()
+        #expect(viewModel.sqlText == "draft")
+    }
+
+    @Test
+    func incrementalHistorySearchFiltersMatches() async throws {
+        let history = DatabaseQueryHistory(persistence: InMemoryHistoryStore())
+        let executor = MockDatabaseQueryExecutor(defaultResponse: .result(DatabaseQueryResult(rows: [])))
+        let viewModel = DatabaseQueryEditorViewModel(history: history, executor: executor.execute)
+        viewModel.sqlText = "SELECT * FROM artists"
+        await viewModel.execute(isReadOnly: false)
+        viewModel.sqlText = "DELETE FROM albums"
+        await viewModel.execute(isReadOnly: false)
+        viewModel.sqlText = "SELECT * FROM albums WHERE artist_id = 1"
+        await viewModel.execute(isReadOnly: false)
+
+        viewModel.beginHistorySearch()
+        viewModel.historySearchQuery = "albums"
+        try await Task.sleep(for: .milliseconds(10))
+
+        #expect(viewModel.historySearchResults.count == 2)
+        #expect(viewModel.historySearchPreview == "SELECT * FROM albums WHERE artist_id = 1")
+
+        viewModel.selectPreviousHistorySearchMatch()
+        #expect(viewModel.historySearchPreview == "DELETE FROM albums")
+        viewModel.selectNextHistorySearchMatch()
+        #expect(viewModel.historySearchPreview == "SELECT * FROM albums WHERE artist_id = 1")
+        _ = viewModel.acceptHistorySearchMatch()
+        #expect(viewModel.sqlText == "SELECT * FROM albums WHERE artist_id = 1")
+        #expect(viewModel.isHistorySearchPresented == false)
+    }
+
+    @Test
+    func historyPersistenceMergesAcrossSessions() async throws {
+        let store = InMemoryHistoryStore()
+        let historyA = DatabaseQueryHistory(capacity: 10, persistence: store)
+        let historyB = DatabaseQueryHistory(capacity: 10, persistence: store)
+
+        await historyA.append("SELECT 1")
+        await historyB.append("SELECT 2")
+        await historyA.append("SELECT 3")
+
+        let combinedA = await historyA.snapshot()
+        let combinedB = await historyB.snapshot()
+
+        #expect(combinedA == ["SELECT 3", "SELECT 2", "SELECT 1"])
+        #expect(combinedB == combinedA)
     }
 }
 

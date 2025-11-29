@@ -1,3 +1,6 @@
+#if os(macOS)
+import AppKit
+#endif
 import SwiftUI
 import TableGlassKit
 
@@ -6,6 +9,7 @@ struct DatabaseQueryEditorView: View {
     let isReadOnly: Bool
     let showsResultsInline: Bool
     let onExecute: (() -> Void)?
+    @FocusState private var isEditorFocused: Bool
 
     init(
         viewModel: DatabaseQueryEditorViewModel,
@@ -34,6 +38,17 @@ struct DatabaseQueryEditorView: View {
         .padding(12)
         .background(.thinMaterial)
         .clipShape(RoundedRectangle(cornerRadius: 10))
+        .overlay(alignment: .topLeading) {
+            keyboardShortcuts
+        }
+        .onChange(of: viewModel.isHistorySearchPresented) { _, isPresented in
+            if !isPresented {
+                isEditorFocused = true
+            }
+        }
+        .onAppear {
+            isEditorFocused = true
+        }
     }
 
     private var header: some View {
@@ -62,6 +77,36 @@ struct DatabaseQueryEditorView: View {
         .accessibilityIdentifier(DatabaseBrowserAccessibility.queryRunButton.rawValue)
     }
 
+    private var keyboardShortcuts: some View {
+        Group {
+            Button {
+                viewModel.loadPreviousHistoryEntry()
+                isEditorFocused = true
+            } label: {
+                EmptyView()
+            }
+            .keyboardShortcut(.upArrow, modifiers: [.command, .option])
+
+            Button {
+                viewModel.loadNextHistoryEntry()
+                isEditorFocused = true
+            } label: {
+                EmptyView()
+            }
+            .keyboardShortcut(.downArrow, modifiers: [.command, .option])
+
+            Button {
+                viewModel.beginHistorySearch()
+            } label: {
+                EmptyView()
+            }
+            .keyboardShortcut("r", modifiers: [.control])
+        }
+        .frame(width: 0, height: 0)
+        .opacity(0.0001)
+        .allowsHitTesting(false)
+    }
+
     private var editor: some View {
         VStack(alignment: .leading, spacing: 6) {
             ZStack(alignment: .topLeading) {
@@ -71,6 +116,7 @@ struct DatabaseQueryEditorView: View {
                     .padding(8)
                     .background(Color(nsColor: .textBackgroundColor))
                     .clipShape(RoundedRectangle(cornerRadius: 8))
+                    .focused($isEditorFocused)
                     .overlay(
                         RoundedRectangle(cornerRadius: 8)
                             .strokeBorder(.quaternary, lineWidth: 1)
@@ -81,6 +127,14 @@ struct DatabaseQueryEditorView: View {
                     Text("Enter SQL to run against this connection…")
                         .foregroundStyle(.secondary)
                         .padding(14)
+                }
+
+                if viewModel.isHistorySearchPresented {
+                    HistorySearchOverlay(
+                        viewModel: viewModel,
+                        focusEditor: { isEditorFocused = true }
+                    )
+                    .padding(12)
                 }
             }
 
@@ -99,6 +153,105 @@ struct DatabaseQueryEditorView: View {
             return viewModel.allowsReadOnlyExecution(for: trimmed)
         }
         return true
+    }
+}
+
+private struct HistorySearchOverlay: View {
+    @ObservedObject var viewModel: DatabaseQueryEditorViewModel
+    let focusEditor: () -> Void
+    @FocusState private var isSearchFieldFocused: Bool
+    #if os(macOS)
+    @State private var keyMonitor: Any?
+    #endif
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 8) {
+                TextField("Search history", text: $viewModel.historySearchQuery)
+                    .textFieldStyle(.roundedBorder)
+                    .focused($isSearchFieldFocused)
+                    .onSubmit(handleAccept)
+
+                Button(action: handleAccept) {
+                    Label("Use", systemImage: "arrow.down.doc")
+                        .labelStyle(.iconOnly)
+                }
+                .buttonStyle(.borderless)
+                .keyboardShortcut(.defaultAction)
+
+                Button("Cancel") {
+                    handleCancel()
+                }
+                .keyboardShortcut(.cancelAction)
+            }
+
+            if let preview = viewModel.historySearchPreview {
+                Text(preview)
+                    .font(.caption.monospaced())
+                    .lineLimit(2)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            } else {
+                Text("No history matches")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+
+            Text("Ctrl-R to search history. ↑/↓ to browse, Enter to insert, Esc to cancel.")
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+        }
+        .padding(10)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(.regularMaterial)
+        .clipShape(RoundedRectangle(cornerRadius: 8))
+        .shadow(radius: 2)
+        .onAppear {
+            isSearchFieldFocused = true
+            startMonitoringKeys()
+        }
+        .onDisappear {
+            stopMonitoringKeys()
+        }
+    }
+
+    private func handleAccept() {
+        let accepted = viewModel.acceptHistorySearchMatch() != nil
+        if accepted {
+            focusEditor()
+        }
+    }
+
+    private func handleCancel() {
+        viewModel.cancelHistorySearch()
+        focusEditor()
+    }
+
+    private func startMonitoringKeys() {
+        #if os(macOS)
+        stopMonitoringKeys()
+        keyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
+            guard viewModel.isHistorySearchPresented else { return event }
+            switch event.specialKey {
+            case .upArrow?:
+                viewModel.selectPreviousHistorySearchMatch()
+                return nil
+            case .downArrow?:
+                viewModel.selectNextHistorySearchMatch()
+                return nil
+            default:
+                return event
+            }
+        }
+        #endif
+    }
+
+    private func stopMonitoringKeys() {
+        #if os(macOS)
+        if let keyMonitor {
+            NSEvent.removeMonitor(keyMonitor)
+        }
+        keyMonitor = nil
+        #endif
     }
 }
 

@@ -17,6 +17,7 @@ final class DatabaseBrowserSessionViewModel: ObservableObject, Identifiable {
     @Published private(set) var isExpandingAll: Bool = false
     @Published private(set) var loadError: String?
     let queryLog: DatabaseQueryLog
+    let queryHistory: DatabaseQueryHistory
 
     private let metadataProvider: any DatabaseMetadataProvider
     private let metadataScope: DatabaseMetadataScope
@@ -34,6 +35,7 @@ final class DatabaseBrowserSessionViewModel: ObservableObject, Identifiable {
         metadataScope: DatabaseMetadataScope = DatabaseMetadataScope(),
         queryExecutor: (any DatabaseQueryExecutor)? = nil,
         queryLog: DatabaseQueryLog = DatabaseQueryLog(),
+        queryHistory: DatabaseQueryHistory = DatabaseQueryHistory(),
         modeController: (any DatabaseSessionModeControlling)? = nil,
         tableDataService: (any DatabaseTableDataService)? = nil
     ) {
@@ -43,6 +45,7 @@ final class DatabaseBrowserSessionViewModel: ObservableObject, Identifiable {
         self.isReadOnly = isReadOnly
         self.metadataScope = metadataScope
         self.queryLog = queryLog
+        self.queryHistory = queryHistory
         let metadata = Self.wrapMetadataProvider(metadataProvider, log: queryLog)
         self.metadataProvider = metadata.provider
         if let queryExecutor {
@@ -96,7 +99,7 @@ final class DatabaseBrowserSessionViewModel: ObservableObject, Identifiable {
     }
 
     func makeQueryEditorViewModel() -> DatabaseQueryEditorViewModel {
-        DatabaseQueryEditorViewModel { [weak self] request in
+        DatabaseQueryEditorViewModel(history: queryHistory) { [weak self] request in
             guard let self else { throw DatabaseConnectionError.notConnected }
             return try await self.execute(request)
         }

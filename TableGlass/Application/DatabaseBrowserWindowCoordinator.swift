@@ -12,8 +12,10 @@ final class DatabaseBrowserWindowCoordinator: NSObject {
 
     func openStandaloneWindow(with viewModel: DatabaseBrowserViewModel) {
         #if canImport(AppKit)
+        let defaultSize = NSSize(width: 1080, height: 720)
+        let minSize = NSSize(width: 900, height: 600)
         let window = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 960, height: 640),
+            contentRect: NSRect(x: 0, y: 0, width: defaultSize.width, height: defaultSize.height),
             styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView],
             backing: .buffered,
             defer: false
@@ -21,6 +23,8 @@ final class DatabaseBrowserWindowCoordinator: NSObject {
         window.delegate = self
         window.titlebarAppearsTransparent = true
         window.titleVisibility = .hidden
+        window.minSize = minSize
+        window.setContentSize(defaultSize)
         let hostingController = NSHostingController(rootView: DatabaseBrowserWindow(viewModel: viewModel))
         window.title = viewModel.windowTitle
         window.contentViewController = hostingController
