@@ -16,7 +16,7 @@ final class DatabaseQueryEditorViewModel: ObservableObject {
     @Published private(set) var isHistorySearchPresented: Bool = false
     @Published var historySearchQuery: String = "" {
         didSet {
-            Task { await self.refreshHistorySearch(resetSelection: true) }
+            scheduleHistorySearch(resetSelection: true)
         }
     }
     @Published private(set) var historySearchResults: [String] = []
@@ -30,6 +30,7 @@ final class DatabaseQueryEditorViewModel: ObservableObject {
     private var historyCache: [String] = []
     private var historySearchSelectionIndex: Int?
     private var isApplyingHistoryEntry = false
+    private var historySearchTask: Task<Void, Never>?
 
     init(
         sqlText: String = "SELECT * FROM artists LIMIT 50",
@@ -157,10 +158,12 @@ final class DatabaseQueryEditorViewModel: ObservableObject {
         isHistorySearchPresented = true
         historySearchSelectionIndex = nil
         historySearchQuery = ""
-        Task { await self.refreshHistorySearch(resetSelection: true) }
+        scheduleHistorySearch(resetSelection: true)
     }
 
     func cancelHistorySearch() {
+        historySearchTask?.cancel()
+        historySearchTask = nil
         isHistorySearchPresented = false
         historySearchSelectionIndex = nil
         historySearchResults = []
@@ -226,8 +229,17 @@ final class DatabaseQueryEditorViewModel: ObservableObject {
         }
     }
 
+    private func scheduleHistorySearch(resetSelection: Bool) {
+        historySearchTask?.cancel()
+        historySearchTask = Task { [weak self] in
+            try? await Task.sleep(nanoseconds: 150_000_000)
+            await self?.refreshHistorySearch(resetSelection: resetSelection)
+        }
+    }
+
     private func refreshHistorySearch(resetSelection: Bool = false) async {
         guard isHistorySearchPresented else { return }
+        historySearchTask = nil
         historySearchResults = await history.search(containing: historySearchQuery)
 
         if resetSelection {
