@@ -22,7 +22,7 @@ TableGlass is a macOS-native database management tool built with SwiftUI. It aim
 
 ## Database Browser Layout
 
-- **Header**: shows connection status dot + name, status text, a **Show Log** button (opens the per-session query log), and a **Read-Only** toggle. Switching modes always prompts with a confirmation dialog that requires a checkbox acknowledgement; the session starts in read-only mode.
+- **Header**: shows connection status dot + name, status text, a **Show Log** button (opens the per-session query log), and a **Read-Only** toggle. Sessions start in read-only mode by default; switching modes always prompts with a confirmation dialog that requires a checkbox acknowledgement.
 - **Sidebar**: tree of catalogs → namespaces/schemas → tables, views, stored procedures. Controls include Refresh (reload metadata), Expand All/Collapse All (with progress indicator while expanding), and lazy loading of children when expanding nodes.
 - **Detail area** (right pane):
   - **Query editor** card at the top with a monospaced TextEditor and a **Run** button. A spinner appears while executing. In read-only mode, the editor shows a lock hint if the text is not safe to execute.
