@@ -65,6 +65,7 @@ struct TableGlassApp: App {
                 environment: environment,
                 connectionManagementViewModel: connectionManagementViewModel
             )
+            DatabaseBrowserCommands()
         }
 
         databaseBrowserWindow

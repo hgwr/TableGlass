@@ -124,7 +124,7 @@ struct DatabaseQueryEditorView: View {
                     .accessibilityIdentifier(DatabaseBrowserAccessibility.queryEditor.rawValue)
 
                 if viewModel.sqlText.isEmpty {
-                    Text("Enter SQL to run against this connection…")
+                    Text("Type a SQL query here, or select a table from the sidebar to auto-generate a SELECT.")
                         .foregroundStyle(.secondary)
                         .padding(14)
                 }
@@ -257,6 +257,7 @@ private struct HistorySearchOverlay: View {
 
 private struct DatabaseQueryResultView: View {
     let result: DatabaseQueryResult
+    let executionDuration: Duration?
 
     private var columns: [String] {
         let keys = result.rows.flatMap { $0.values.keys }
@@ -269,6 +270,9 @@ private struct DatabaseQueryResultView: View {
                 Label("Rows: \(result.rows.count)", systemImage: "tablecells")
                 if let affected = result.affectedRowCount {
                     Label("Affected: \(affected)", systemImage: "number")
+                }
+                if let executionTimeDescription {
+                    Label("Time: \(executionTimeDescription)", systemImage: "clock")
                 }
             }
             .font(.subheadline)
@@ -322,6 +326,16 @@ private struct DatabaseQueryResultView: View {
         .background(index % 2 == 0 ? Color(nsColor: .controlBackgroundColor) : Color.clear)
         .clipShape(RoundedRectangle(cornerRadius: 4))
     }
+
+    private var executionTimeDescription: String? {
+        guard let executionDuration else { return nil }
+        let components = executionDuration.components
+        let millisecondsFromSeconds = Double(components.seconds) * 1_000
+        let millisecondsFromAttoseconds = Double(components.attoseconds) / 1_000_000_000_000_000
+        let total = millisecondsFromSeconds + millisecondsFromAttoseconds
+        let rounded = Int(total.rounded())
+        return "\(rounded) ms"
+    }
 }
 
 struct DatabaseQueryResultSection: View {
@@ -349,7 +363,10 @@ struct DatabaseQueryResultSection: View {
             .clipShape(RoundedRectangle(cornerRadius: 8))
             .accessibilityIdentifier(DatabaseBrowserAccessibility.queryErrorMessage.rawValue)
         } else if let result = viewModel.result {
-            DatabaseQueryResultView(result: result)
+            DatabaseQueryResultView(
+                result: result,
+                executionDuration: viewModel.lastExecutionDuration
+            )
         } else {
             Text("Results will appear here after you run a query.")
                 .foregroundStyle(.secondary)

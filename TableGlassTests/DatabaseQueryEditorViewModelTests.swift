@@ -149,6 +149,30 @@ struct DatabaseQueryEditorViewModelTests {
     }
 
     @Test
+    func executionDurationIsCapturedAndClearedOnError() async throws {
+        let executor = MockDatabaseQueryExecutor(
+            routes: [
+                .sqlEquals(
+                    "SELECT 1",
+                    response: .result(DatabaseQueryResult(rows: []), delay: .milliseconds(10))
+                ),
+            ],
+            defaultResponse: .failure(QueryExecutorError.failed)
+        )
+
+        let viewModel = DatabaseQueryEditorViewModel(executor: executor.execute)
+        viewModel.sqlText = "SELECT 1"
+
+        await viewModel.execute(isReadOnly: false)
+        #expect(viewModel.lastExecutionDuration != nil)
+        #expect(viewModel.lastExecutionDuration ?? .zero > .zero)
+
+        viewModel.sqlText = "SELECT 2"
+        await viewModel.execute(isReadOnly: false)
+        #expect(viewModel.lastExecutionDuration == nil)
+    }
+
+    @Test
     func historyNavigationRestoresUnsubmittedText() async throws {
         let history = DatabaseQueryHistory(persistence: InMemoryHistoryStore())
         let executor = MockDatabaseQueryExecutor(defaultResponse: .result(DatabaseQueryResult(rows: [])))

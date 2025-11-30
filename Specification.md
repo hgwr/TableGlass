@@ -2,7 +2,7 @@
 
 ## About TableGlass
 
-TableGlass is a macOS-native database management tool built with SwiftUI. It aims to stay lightweight, responsive, and secure while supporting PostgreSQL, MySQL, and SQLite drivers. Database access is async/await, and SSH/Keychain integration is required for secrets and tunnels.
+TableGlass is a macOS-native database management tool built with SwiftUI. It aims to stay lightweight, responsive, and secure while supporting PostgreSQL, MySQL, and SQLite drivers. Database access is async/await, and SSH/Keychain integration is required for secrets and tunnels. See [README.md](README.md) for the high-level overview, tooling, and LocalDebug/testing guidance.
 
 ## Startup and Window Flow
 
@@ -25,7 +25,7 @@ TableGlass is a macOS-native database management tool built with SwiftUI. It aim
 - **Header**: shows connection status dot + name, status text, a **Show Log** button (opens the per-session query log), and a **Read-Only** toggle. Sessions start in read-only mode by default; switching modes always prompts with a confirmation dialog that requires a checkbox acknowledgement.
 - **Sidebar**: tree of catalogs → namespaces/schemas → tables, views, stored procedures. Controls include Refresh (reload metadata), Expand All/Collapse All (with progress indicator while expanding), and lazy loading of children when expanding nodes.
 - **Detail area** (right pane):
-  - **Query editor** card at the top with a monospaced TextEditor and a **Run** button. A spinner appears while executing. In read-only mode, the editor shows a lock hint if the text is not safe to execute.
+  - **Query editor** card at the top with a monospaced TextEditor and a **Run** button. A spinner appears while executing. In read-only mode, the editor shows a lock hint if the text is not safe to execute. When empty, the editor surface shows a hint that you can type SQL or select a table in the sidebar to auto-generate a query.
   - **Object header** beneath the editor displays the selected object's name, type icon, and fully qualified path, or a prompt when nothing is selected.
   - **Detail content**: when a table is selected, a segmented control switches between **Results** and **Table Editor**. For other objects or no selection, the Results view is shown.
 
@@ -34,7 +34,7 @@ TableGlass is a macOS-native database management tool built with SwiftUI. It aim
 - Selecting a table populates the editor with a default query and runs it immediately in read-only mode: `SELECT * FROM "<schema>"."<table>" LIMIT 50;` (schema omitted when empty, identifiers are quoted; limit defaults to 50).
 - The **Run** button trims the editor text; empty input is ignored. Execution is disabled while a query is in flight.
 - Read-only enforcement blocks statements that start with or contain mutation keywords (INSERT/UPDATE/DELETE/ALTER/CREATE, etc.). When blocked, the Run button is disabled and an inline notice explains the restriction.
-- Results render in the **Query Results** section beneath the object header: row count, affected row count (when provided), and a scrollable, read-only grid of returned rows. When no rows are returned, a placeholder message is shown.
+- Results render in the **Query Results** section beneath the object header: row count, affected row count (when provided), execution time in milliseconds, and a scrollable, read-only grid of returned rows. When no rows are returned, a placeholder message is shown.
 - Errors surface inline in the results area with a warning icon and a **Retry** button that reuses the current SQL. The editor retains the text so users can adjust and rerun.
 
 ## Table Data Editor
@@ -53,9 +53,11 @@ TableGlass is a macOS-native database management tool built with SwiftUI. It aim
 
 ## Keyboard Shortcuts
 
-- Run query: click **Run** (no dedicated shortcut yet; planned `cmd+return` once wired).
+- Run query: **Run** or `cmd+return` (Database menu → Run Query).
+- Open SQL history search: `cmd+shift+H` (Database menu) or `ctrl+R`; `cmd+option+↑/↓` navigate history, `Return` inserts match, `Esc` cancels search.
 - Toggle read-only: header switch with confirmation dialog (no shortcut; planned).
-- SQL history: `cmd+option+↑/↓` (back/forward), `ctrl+R` to open search, `Return` to insert match, `Esc` to cancel search.
+- Connections and windows: `cmd+N` New Connection, `cmd+shift+M` Manage Connections, `cmd+shift+B` New Database Browser Window. Standard macOS window/tab navigation applies for browser tabs and windows.
+- Database menu also exposes **Open Connection Window** alongside the query commands.
 - Connections and windows: `cmd+N` New Connection, `cmd+shift+M` Manage Connections, `cmd+shift+B` New Database Browser Window. Standard macOS window/tab navigation applies for browser tabs and windows.
 
 ## Planned/Upcoming Behavior

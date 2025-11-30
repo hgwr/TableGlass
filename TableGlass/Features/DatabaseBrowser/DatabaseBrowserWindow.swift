@@ -102,6 +102,7 @@ private struct DatabaseBrowserSessionView: View {
             }
         }
         .frame(minWidth: 760, minHeight: 520)
+        .focusedSceneValue(\.databaseBrowserCommandActions, commandActions)
         .sheet(isPresented: $isShowingLog) {
             DatabaseSessionLogView(viewModel: logViewModel)
         }
@@ -353,6 +354,20 @@ private struct DatabaseBrowserSessionView: View {
         }
         .pickerStyle(.segmented)
         .frame(maxWidth: 320)
+    }
+
+    @MainActor
+    private var commandActions: DatabaseBrowserCommandActions {
+        DatabaseBrowserCommandActions(
+            runQuery: {
+                detailDisplayMode = .results
+                queryEditorViewModel.requestExecute(isReadOnly: session.isReadOnly)
+            },
+            showHistory: {
+                detailDisplayMode = .results
+                queryEditorViewModel.beginHistorySearch()
+            }
+        )
     }
 
     private func pathDescription(for node: DatabaseObjectTreeNode) -> String {
