@@ -46,13 +46,12 @@ actor PreviewDatabaseTableDataService: DatabaseTableDataService {
     }
 
     func fetchPage(for table: DatabaseTableIdentifier, page: Int, pageSize: Int) async throws -> DatabaseTablePage {
-        guard var state = tables[table] else {
+        guard let state = tables[table] else {
             throw PreviewDatabaseTableDataServiceError.tableNotFound(table)
         }
 
         let start = max(0, page * pageSize)
         let end = min(state.rows.count, start + pageSize)
-        tables[table] = state
         let slice = start < end ? Array(state.rows[start..<end]) : []
         let hasMore = end < state.rows.count
 

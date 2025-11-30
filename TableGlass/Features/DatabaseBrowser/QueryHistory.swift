@@ -36,43 +36,43 @@ struct UserDefaultsQueryHistoryStore: QueryHistoryPersisting {
 actor DatabaseQueryHistory {
     private let capacity: Int
     private var entries: [String]
-    private let persistence: QueryHistoryPersisting?
+    private var persistence: QueryHistoryPersisting?
 
     init(
         capacity: Int = 5_000,
         initialEntries: [String] = [],
-        persistence: QueryHistoryPersisting? = UserDefaultsQueryHistoryStore()
+        persistence: QueryHistoryPersisting? = nil
     ) {
         self.capacity = max(1, capacity)
         self.persistence = persistence
-        self.entries = []
+        self.entries = Self.mergedEntries(from: initialEntries, capacity: self.capacity)
 
-        let persisted = persistence?.load() ?? []
-        append(contentsOf: persisted + initialEntries, shouldPersist: false)
-        persist()
+        Task {
+            await self.bootstrapFromPersistence(initialEntries: initialEntries)
+        }
     }
 
-    func append(_ sql: String) {
-        append(sql, shouldPersist: true)
+    func append(_ sql: String) async {
+        await append(sql, shouldPersist: true)
     }
 
-    func append(contentsOf entries: [String]) {
-        append(contentsOf: entries, shouldPersist: true)
+    func append(contentsOf entries: [String]) async {
+        await append(contentsOf: entries, shouldPersist: true)
     }
 
-    func snapshot() -> [String] {
-        synchronizeWithPersistence()
+    func snapshot() async -> [String] {
+        await synchronizeWithPersistence()
         return Array(entries.reversed())
     }
 
-    func search(containing query: String) -> [String] {
-        synchronizeWithPersistence()
+    func search(containing query: String) async -> [String] {
+        await synchronizeWithPersistence()
         let normalizedQuery = query
             .trimmingCharacters(in: .whitespacesAndNewlines)
             .lowercased()
 
         guard !normalizedQuery.isEmpty else {
-            return snapshot()
+            return Array(entries.reversed())
         }
 
         return entries.reversed().filter { entry in
@@ -80,55 +80,108 @@ actor DatabaseQueryHistory {
         }
     }
 
-    private func append(_ sql: String, shouldPersist: Bool) {
+    private func append(_ sql: String, shouldPersist: Bool) async {
         if shouldPersist {
-            synchronizeWithPersistence()
-        }
-        let normalized = normalize(sql)
-        guard !normalized.isEmpty else { return }
-        if entries.last == normalized {
-            return
+            await synchronizeWithPersistence()
         }
 
         var updated = entries
-        updated.append(normalized)
-        if updated.count > capacity {
-            updated.removeFirst(updated.count - capacity)
-        }
+        let didChange = Self.applyAppend(sql, to: &updated, capacity: capacity)
+        guard didChange else { return }
+
         entries = updated
 
         if shouldPersist {
-            persist()
+            await persist()
         }
     }
 
-    private func append(contentsOf entries: [String], shouldPersist: Bool) {
+    private func append(contentsOf entries: [String], shouldPersist: Bool) async {
         if shouldPersist {
-            synchronizeWithPersistence()
+            await synchronizeWithPersistence()
         }
+
+        var updated = self.entries
         var didChange = false
         for sql in entries {
-            let before = self.entries
-            append(sql, shouldPersist: false)
-            didChange = didChange || before != self.entries
+            didChange = Self.applyAppend(sql, to: &updated, capacity: capacity) || didChange
         }
-        if didChange && shouldPersist {
-            persist()
+
+        guard didChange else { return }
+        self.entries = updated
+
+        if shouldPersist {
+            await persist()
         }
     }
 
-    private func persist() {
-        persistence?.save(entries)
+    private func persist() async {
+        guard let persistence = await resolvePersistence() else { return }
+        let currentEntries = entries
+        await MainActor.run {
+            persistence.save(currentEntries)
+        }
     }
 
-    private func synchronizeWithPersistence() {
-        guard let persistence else { return }
-        let persisted = persistence.load()
+    private func synchronizeWithPersistence() async {
+        guard let persistence = await resolvePersistence() else { return }
+        let persisted = await MainActor.run {
+            persistence.load()
+        }
         guard !persisted.isEmpty else { return }
-        entries = applyCapacity(to: persisted)
+        entries = Self.applyCapacity(to: persisted, capacity: capacity)
+    }
+}
+
+private extension DatabaseQueryHistory {
+    func bootstrapFromPersistence(initialEntries: [String]) async {
+        guard let persistence = await resolvePersistence() else { return }
+        let persisted = await MainActor.run {
+            persistence.load()
+        }
+        guard !persisted.isEmpty else { return }
+
+        let merged = Self.mergedEntries(from: persisted + initialEntries, capacity: capacity)
+        guard merged != entries else { return }
+        entries = merged
+        await persist()
     }
 
-    private func applyCapacity(to entries: [String]) -> [String] {
+    func resolvePersistence() async -> QueryHistoryPersisting? {
+        if let persistence {
+            return persistence
+        }
+        let store = await MainActor.run {
+            UserDefaultsQueryHistoryStore()
+        }
+        persistence = store
+        return store
+    }
+
+    static func mergedEntries(from entries: [String], capacity: Int) -> [String] {
+        var merged: [String] = []
+        for sql in entries {
+            _ = applyAppend(sql, to: &merged, capacity: capacity)
+        }
+        return merged
+    }
+
+    @discardableResult
+    static func applyAppend(_ sql: String, to entries: inout [String], capacity: Int) -> Bool {
+        let normalized = normalize(sql)
+        guard !normalized.isEmpty else { return false }
+        if entries.last == normalized {
+            return false
+        }
+
+        entries.append(normalized)
+        if entries.count > capacity {
+            entries.removeFirst(entries.count - capacity)
+        }
+        return true
+    }
+
+    static func applyCapacity(to entries: [String], capacity: Int) -> [String] {
         if entries.count <= capacity {
             return entries
         }
@@ -136,7 +189,7 @@ actor DatabaseQueryHistory {
         return Array(entries.dropFirst(excess))
     }
 
-    private func normalize(_ sql: String) -> String {
+    static func normalize(_ sql: String) -> String {
         sql.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 }

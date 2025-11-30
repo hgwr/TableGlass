@@ -83,7 +83,7 @@ public actor MockDatabaseTableDataService: DatabaseTableDataService {
     }
 
     public func fetchPage(for table: DatabaseTableIdentifier, page: Int, pageSize: Int) async throws -> DatabaseTablePage {
-        var config = try configuration(for: table)
+        let config = try configuration(for: table)
         try await sleepIfNeeded(config.behavior.fetchDelay)
         if let error = config.behavior.fetchError { throw error }
 
@@ -92,7 +92,6 @@ public actor MockDatabaseTableDataService: DatabaseTableDataService {
         let end = min(config.rows.count, start + pageSize)
         let rows = start < end ? Array(config.rows[start..<end]) : []
         let hasMore = end < config.rows.count
-        tables[table] = config
         return DatabaseTablePage(columns: config.columns, rows: rows, hasMore: hasMore)
     }
 
