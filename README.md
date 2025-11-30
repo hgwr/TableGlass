@@ -2,12 +2,14 @@
 
 TableGlass is an open-source database management tool.
 Designed for macOS. Built using SwiftUI. It aims to be lightweight and easy to use. Compatible with databases such as PostgreSQL, MySQL and Sqlite3.
+For a deeper look at architecture and UX decisions, see [Specification.md](Specification.md).
 
 ## Features
 
 - **Multi-Database Support**: Planned support for PostgreSQL, MySQL, and Sqlite3 databases.
 - **Intuitive UI**: An easy-to-use interface makes database management easy.
 - **Open Source**: The source code is available on GitHub, and community contributions are welcome.
+- **Database Browser ergonomics**: Run queries with `cmd+return` from the Database menu, open SQL history with `cmd+shift+H`, and see rows/affected/time in the results header for each execution.
 
 ## SSH Tunneling
 

@@ -21,6 +21,7 @@ final class DatabaseQueryEditorViewModel: ObservableObject {
     }
     @Published private(set) var historySearchResults: [String] = []
     @Published private(set) var historySearchPreview: String?
+    @Published private(set) var lastExecutionDuration: Duration?
 
     private let executor: @Sendable (DatabaseQueryRequest) async throws -> DatabaseQueryResult
     private let history: DatabaseQueryHistory
@@ -57,6 +58,7 @@ final class DatabaseQueryEditorViewModel: ObservableObject {
 
         if isReadOnly && !allowsReadOnlyExecution(for: sql) {
             errorMessage = "Read-only mode prevents running this statement."
+            lastExecutionDuration = nil
             return
         }
 
@@ -73,9 +75,14 @@ final class DatabaseQueryEditorViewModel: ObservableObject {
 
         do {
             let request = DatabaseQueryRequest(sql: sql)
-            result = try await executor(request)
+            let clock = ContinuousClock()
+            let start = clock.now
+            let queryResult = try await executor(request)
+            lastExecutionDuration = start.duration(to: clock.now)
+            result = queryResult
         } catch {
             result = nil
+            lastExecutionDuration = nil
             errorMessage = error.localizedDescription
         }
 

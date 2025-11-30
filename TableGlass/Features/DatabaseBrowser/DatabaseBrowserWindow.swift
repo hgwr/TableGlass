@@ -102,6 +102,7 @@ private struct DatabaseBrowserSessionView: View {
             }
         }
         .frame(minWidth: 760, minHeight: 520)
+        .focusedSceneValue(\.databaseBrowserCommandActions, commandActions)
         .sheet(isPresented: $isShowingLog) {
             DatabaseSessionLogView(viewModel: logViewModel)
         }
@@ -257,13 +258,19 @@ private struct DatabaseBrowserSessionView: View {
     }
 
     private var detailView: some View {
+        #if os(macOS)
+        VSplitView {
+            queryEditorSection
+                .frame(minHeight: 180)
+            detailSection
+                .frame(minHeight: 220)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .padding()
+        .background(.background)
+        #else
         VStack(alignment: .leading, spacing: 12) {
-            DatabaseQueryEditorView(
-                viewModel: queryEditorViewModel,
-                isReadOnly: session.isReadOnly,
-                showsResultsInline: false,
-                onExecute: { detailDisplayMode = .results }
-            )
+            queryEditorSection
             Divider()
             detailHeader
             Divider()
@@ -272,6 +279,25 @@ private struct DatabaseBrowserSessionView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .padding()
         .background(.background)
+        #endif
+    }
+
+    private var queryEditorSection: some View {
+        DatabaseQueryEditorView(
+            viewModel: queryEditorViewModel,
+            isReadOnly: session.isReadOnly,
+            showsResultsInline: false,
+            onExecute: { detailDisplayMode = .results }
+        )
+    }
+
+    private var detailSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Divider()
+            detailHeader
+            Divider()
+            detailContent
+        }
     }
 
     private var detailHeader: some View {
@@ -353,6 +379,20 @@ private struct DatabaseBrowserSessionView: View {
         }
         .pickerStyle(.segmented)
         .frame(maxWidth: 320)
+    }
+
+    @MainActor
+    private var commandActions: DatabaseBrowserCommandActions {
+        DatabaseBrowserCommandActions(
+            runQuery: {
+                detailDisplayMode = .results
+                queryEditorViewModel.requestExecute(isReadOnly: session.isReadOnly)
+            },
+            showHistory: {
+                detailDisplayMode = .results
+                queryEditorViewModel.beginHistorySearch()
+            }
+        )
     }
 
     private func pathDescription(for node: DatabaseObjectTreeNode) -> String {

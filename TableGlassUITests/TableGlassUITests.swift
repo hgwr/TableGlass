@@ -57,6 +57,31 @@ final class TableGlassUITests: XCTestCase {
         XCTAssertTrue(menus.menuItems["New Database Browser Window..."].exists)
     }
 
+    @MainActor
+    func testDatabaseMenuCommandsExposeQueryActions() throws {
+        let app = makeApplication()
+        app.launchArguments.append("--uitest-database-browser")
+        app.launch()
+
+        let browserWindow = app.windows["Database Browser"]
+        XCTAssertTrue(browserWindow.waitForExistence(timeout: 2))
+        browserWindow.click()
+
+        let menus = app.menuBars
+        XCTAssertTrue(menus.menuItems["Run Query"].waitForExistence(timeout: 1))
+        XCTAssertTrue(menus.menuItems["Show SQL History"].exists)
+        XCTAssertTrue(menus.menuItems["Open Connection Window"].exists)
+
+        let editor = app.textViews["databaseBrowser.query.editor"]
+        XCTAssertTrue(editor.waitForExistence(timeout: 2))
+        editor.click()
+
+        app.typeKey("h", modifierFlags: [.command, .shift])
+
+        let historyField = app.textFields["Search history"]
+        XCTAssertTrue(historyField.waitForExistence(timeout: 1))
+    }
+
     private func replaceText(in element: XCUIElement, with text: String) {
         element.click()
         element.typeKey("a", modifierFlags: .command)
