@@ -73,13 +73,13 @@ public actor MockDatabaseTableDataService: DatabaseTableDataService {
         self.tables = tables
     }
 
-    public convenience init(
+    public init(
         table: DatabaseTableIdentifier,
         columns: [DatabaseColumn],
         rows: [DatabaseTableRow] = [],
         behavior: MockTableBehavior = .passthrough
     ) {
-        self.init(tables: [table: MockTableConfiguration(columns: columns, rows: rows, behavior: behavior)])
+        self.tables = [table: MockTableConfiguration(columns: columns, rows: rows, behavior: behavior)]
     }
 
     public func fetchPage(for table: DatabaseTableIdentifier, page: Int, pageSize: Int) async throws -> DatabaseTablePage {

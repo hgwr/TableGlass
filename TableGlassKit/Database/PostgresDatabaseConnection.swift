@@ -28,10 +28,10 @@ public actor PostgresDatabaseConnection: DatabaseConnection {
         guard !connected else { return }
 
         let configuration = try await makeConfiguration()
-        let logHost = configuration.host
-        let logPort = configuration.port
+        let logHost = configuration.host ?? profile.host
+        let logPort = configuration.port ?? profile.port
         let logUser = configuration.username
-        let logDatabase = configuration.database ?? "<nil>"
+        let logDatabase = configuration.database ?? profile.database ?? "<nil>"
         logger.info("Connecting to postgres host=\(logHost) port=\(logPort) user=\(logUser) db=\(logDatabase)")
         let client = PostgresClient(
             configuration: configuration,
@@ -625,4 +625,3 @@ extension DatabaseQueryValue {
     }
 }
 #endif
-
