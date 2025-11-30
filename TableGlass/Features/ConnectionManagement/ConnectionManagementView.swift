@@ -549,7 +549,6 @@ private struct PreviewSSHKeychainService: SSHKeychainService {
         try await allIdentities().first { $0.label == label }
     }
 }
-#endif
 
 #Preview("Connection Management – Populated") {
     ConnectionManagementPreviewContainer(store: PreviewConnectionStore()) { viewModel in
@@ -563,3 +562,4 @@ private struct PreviewSSHKeychainService: SSHKeychainService {
         viewModel.clearSelection()
     }
 }
+#endif
