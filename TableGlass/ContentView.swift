@@ -35,8 +35,17 @@ struct ContentView: View {
                 } else {
                     List(viewModel.connections) { connection in
                         VStack(alignment: .leading) {
-                            Text(connection.name)
-                                .font(.headline)
+                            HStack(spacing: 8) {
+                                Text(connection.displayName)
+                                    .font(.headline)
+                                if connection.isDraft {
+                                    Text("Draft")
+                                        .font(.caption2.weight(.semibold))
+                                        .padding(.horizontal, 6)
+                                        .padding(.vertical, 3)
+                                        .background(Color.orange.opacity(0.15), in: Capsule())
+                                }
+                            }
                             Text(connection.kindDescription)
                                 .font(.subheadline)
                                 .foregroundStyle(.secondary)
