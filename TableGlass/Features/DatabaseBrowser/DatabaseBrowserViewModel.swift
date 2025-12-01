@@ -79,7 +79,7 @@ final class DatabaseBrowserViewModel: ObservableObject {
                 selectedSessionID = nil
             }
 
-            for profile in profiles where !connectedProfileIDs.contains(profile.id) {
+            for profile in profiles where !profile.isDraft && !connectedProfileIDs.contains(profile.id) {
                 do {
                     try await connect(profile: profile)
                 } catch {
@@ -96,6 +96,9 @@ final class DatabaseBrowserViewModel: ObservableObject {
 
     @discardableResult
     func connect(profile: ConnectionProfile) async throws -> DatabaseBrowserSessionViewModel {
+        if profile.isDraft {
+            throw DatabaseError.connectionFailed("Draft connections cannot be opened.")
+        }
         guard !connectingProfileIDs.contains(profile.id),
               !connectedProfileIDs.contains(profile.id) else {
             if let existing = sessions.first(where: { sessionProfiles[$0.id] == profile.id }) {

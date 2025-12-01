@@ -373,9 +373,24 @@ final class ConnectionManagementViewModel: ObservableObject {
     }
 
     @discardableResult
+    func saveDraft() async -> ConnectionProfile? {
+        await persistCurrentConnection(asDraft: true)
+    }
+
+    @discardableResult
     func saveCurrentConnection() async -> ConnectionProfile? {
-        guard draft.isValid else {
+        await persistCurrentConnection(asDraft: false)
+    }
+
+    @discardableResult
+    private func persistCurrentConnection(asDraft: Bool) async -> ConnectionProfile? {
+        if !asDraft && !draft.isValid {
             lastError = "Please complete the required fields."
+            return nil
+        }
+
+        if asDraft && !draft.hasAnyContent {
+            lastError = "Add at least one field before saving a draft."
             return nil
         }
 
@@ -384,20 +399,20 @@ final class ConnectionManagementViewModel: ObservableObject {
 
         do {
             let targetID = isNewConnection ? ConnectionProfile.ID() : (selection ?? ConnectionProfile.ID())
-            var profile = draft.makeProfile(id: targetID)
-            try await persistDatabasePassword(into: &profile)
+            let profileIsDraft = asDraft
+            var profile = draft.makeProfile(id: targetID, isDraft: profileIsDraft)
+            try await persistDatabasePassword(into: &profile, isDraft: profileIsDraft)
 
             if isNewConnection {
                 try await connectionStore.saveConnection(profile)
                 connections.append(profile)
-                applySelection(id: profile.id)
             } else if let selection {
                 try await connectionStore.saveConnection(profile)
                 if let index = connections.firstIndex(where: { $0.id == selection }) {
                     connections[index] = profile
                 }
-                applySelection(id: profile.id)
             }
+            applySelection(id: profile.id)
             lastError = nil
             return profile
         } catch {
@@ -428,13 +443,16 @@ final class ConnectionManagementViewModel: ObservableObject {
         }
     }
 
-    private func persistDatabasePassword(into profile: inout ConnectionProfile) async throws {
+    private func persistDatabasePassword(
+        into profile: inout ConnectionProfile,
+        isDraft: Bool
+    ) async throws {
         let trimmed = draft.password.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
 
         let identifier = profile.passwordKeychainIdentifier
             ?? draft.passwordKeychainIdentifier
-            ?? passwordKeychainIdentifier(for: profile.id)
+            ?? passwordKeychainIdentifier(for: profile.id, isDraft: isDraft)
         let stored = try await databasePasswordStore.store(password: trimmed, identifier: identifier)
         profile.passwordKeychainIdentifier = stored
         draft.passwordKeychainIdentifier = stored
@@ -442,12 +460,21 @@ final class ConnectionManagementViewModel: ObservableObject {
     }
 
     private func deletePasswordIfNeeded(for profile: ConnectionProfile) async {
-        guard let identifier = profile.passwordKeychainIdentifier else { return }
-        _ = try? await databasePasswordStore.deletePassword(identifier: identifier)
+        var identifiers = Set<String>()
+        if let identifier = profile.passwordKeychainIdentifier {
+            identifiers.insert(identifier)
+        }
+        identifiers.insert(passwordKeychainIdentifier(for: profile.id, isDraft: true))
+        identifiers.insert(passwordKeychainIdentifier(for: profile.id, isDraft: false))
+
+        for identifier in identifiers {
+            _ = try? await databasePasswordStore.deletePassword(identifier: identifier)
+        }
     }
 
-    private func passwordKeychainIdentifier(for id: ConnectionProfile.ID) -> String {
-        "tableglass.connection.\(id.uuidString)"
+    private func passwordKeychainIdentifier(for id: ConnectionProfile.ID, isDraft: Bool) -> String {
+        let scope = isDraft ? "draft" : "profile"
+        return "tableglass.connection.\(scope).\(id.uuidString)"
     }
 }
 
@@ -468,6 +495,7 @@ struct ConnectionDraft: Equatable {
     var sshPasswordKeychainIdentifier: String?
     var sshKeychainIdentityLabel: String?
     var sshKeychainIdentityReference: Data?
+    var isDraft: Bool
 
     static func empty(kind: ConnectionProfile.DatabaseKind = .postgreSQL) -> ConnectionDraft {
         ConnectionDraft(
@@ -486,7 +514,8 @@ struct ConnectionDraft: Equatable {
             sshPassword: "",
             sshPasswordKeychainIdentifier: nil,
             sshKeychainIdentityLabel: nil,
-            sshKeychainIdentityReference: nil
+            sshKeychainIdentityReference: nil,
+            isDraft: true
         )
     }
 
@@ -506,7 +535,8 @@ struct ConnectionDraft: Equatable {
         sshPassword: String,
         sshPasswordKeychainIdentifier: String?,
         sshKeychainIdentityLabel: String?,
-        sshKeychainIdentityReference: Data?
+        sshKeychainIdentityReference: Data?,
+        isDraft: Bool
     ) {
         self.name = name
         self.kind = kind
@@ -524,6 +554,7 @@ struct ConnectionDraft: Equatable {
         self.sshPasswordKeychainIdentifier = sshPasswordKeychainIdentifier
         self.sshKeychainIdentityLabel = sshKeychainIdentityLabel
         self.sshKeychainIdentityReference = sshKeychainIdentityReference
+        self.isDraft = isDraft
     }
 
     init(connection: ConnectionProfile) {
@@ -543,7 +574,8 @@ struct ConnectionDraft: Equatable {
             sshPassword: "",
             sshPasswordKeychainIdentifier: connection.sshConfiguration.passwordKeychainIdentifier,
             sshKeychainIdentityLabel: connection.sshConfiguration.keychainIdentityLabel,
-            sshKeychainIdentityReference: connection.sshConfiguration.keychainIdentityReference
+            sshKeychainIdentityReference: connection.sshConfiguration.keychainIdentityReference,
+            isDraft: connection.isDraft
         )
     }
 
@@ -551,42 +583,107 @@ struct ConnectionDraft: Equatable {
         string.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
-    var isValid: Bool {
+    enum MissingField: Hashable {
+        case name
+        case host
+        case port
+        case username
+        case sshAlias
+        case sshUsername
+        case sshCredential
+    }
+
+    var missingRequiredFields: [MissingField] {
+        var missing: [MissingField] = []
         let requiresNetworking = kind != .sqlite
+
+        if Self.isBlank(name) {
+            missing.append(.name)
+        }
+
+        if Self.isBlank(host) {
+            missing.append(.host)
+        }
+
+        if requiresNetworking && port <= 0 {
+            missing.append(.port)
+        }
+
+        if requiresNetworking && Self.isBlank(username) {
+            missing.append(.username)
+        }
 
         if useSSHTunnel {
             if Self.isBlank(sshConfigAlias) {
-                return false
+                missing.append(.sshAlias)
             }
 
             switch sshAuthenticationMethod {
             case .keyFile:
+                if Self.isBlank(sshUsername) {
+                    missing.append(.sshUsername)
+                }
                 let hasKeychainIdentity = sshKeychainIdentityReference != nil
                 let hasKeyFile = !Self.isBlank(sshKeyFilePath)
-                if Self.isBlank(sshUsername) || (!hasKeychainIdentity && !hasKeyFile) {
-                    return false
+                if !hasKeychainIdentity && !hasKeyFile {
+                    missing.append(.sshCredential)
                 }
             case .usernameAndPassword:
                 if Self.isBlank(sshUsername) {
-                    return false
+                    missing.append(.sshUsername)
                 }
                 let hasPasswordReference = sshPasswordKeychainIdentifier != nil
                 let hasInlinePassword = !Self.isBlank(sshPassword)
                 if !hasPasswordReference && !hasInlinePassword {
-                    return false
+                    missing.append(.sshCredential)
                 }
             case .sshAgent:
                 if Self.isBlank(sshUsername) {
-                    return false
+                    missing.append(.sshUsername)
                 }
             }
         }
 
-        return !Self.isBlank(name) && !Self.isBlank(host) && (!requiresNetworking || port > 0)
-            && (kind == .sqlite || !Self.isBlank(username))
+        return missing
     }
 
-    func makeProfile(id: ConnectionProfile.ID = ConnectionProfile.ID()) -> ConnectionProfile {
+    var nextMissingField: MissingField? {
+        missingRequiredFields.first
+    }
+
+    var isValid: Bool {
+        missingRequiredFields.isEmpty
+    }
+
+    var hasAnyContent: Bool {
+        if !Self.isBlank(name) || !Self.isBlank(host) || !Self.isBlank(username) {
+            return true
+        }
+        if kind != .postgreSQL {
+            return true
+        }
+        if port != ConnectionDraft.defaultPort(for: kind) {
+            return true
+        }
+        if !Self.isBlank(password) || passwordKeychainIdentifier != nil {
+            return true
+        }
+        if useSSHTunnel {
+            return true
+        }
+        if !Self.isBlank(sshConfigAlias) || !Self.isBlank(sshUsername) || !Self.isBlank(sshKeyFilePath) {
+            return true
+        }
+        if sshKeychainIdentityReference != nil || !Self.isBlank(sshPassword) || sshPasswordKeychainIdentifier != nil {
+            return true
+        }
+        return false
+    }
+
+    func makeProfile(
+        id: ConnectionProfile.ID = ConnectionProfile.ID(),
+        isDraft: Bool
+    ) -> ConnectionProfile {
         ConnectionProfile(
             id: id,
             name: name,
@@ -604,7 +701,8 @@ struct ConnectionDraft: Equatable {
                 keyFilePath: sshKeyFilePath,
                 passwordKeychainIdentifier: sshPasswordKeychainIdentifier
             ),
-            passwordKeychainIdentifier: passwordKeychainIdentifier
+            passwordKeychainIdentifier: passwordKeychainIdentifier,
+            isDraft: isDraft
         )
     }
 

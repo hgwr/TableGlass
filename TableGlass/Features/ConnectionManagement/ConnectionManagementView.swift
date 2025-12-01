@@ -13,6 +13,7 @@ struct ConnectionManagementView: View {
     @State private var isDeleteConfirmationPresented = false
     @State private var isSSHKeyFileImporterPresented = false
     @State private var isConnecting = false
+    @FocusState private var focusedField: FieldFocus?
 
     init(viewModel: ConnectionManagementViewModel) {
         _viewModel = StateObject(wrappedValue: viewModel)
@@ -33,14 +34,30 @@ struct ConnectionManagementView: View {
         )
     }
 
+    private var draftConnections: [ConnectionProfile] {
+        viewModel.connections.filter(\.isDraft)
+    }
+
+    private var finalizedConnections: [ConnectionProfile] {
+        viewModel.connections.filter { !$0.isDraft }
+    }
+
     var body: some View {
         NavigationSplitView {
             VStack(alignment: .leading) {
                 List(selection: selectionBinding) {
-                    Section("Connections") {
-                        ForEach(viewModel.connections) { connection in
-                            Label(connection.name, systemImage: iconName(for: connection.kind))
-                                .tag(connection.id)
+                    if !draftConnections.isEmpty {
+                        Section("Drafts") {
+                            ForEach(draftConnections) { connection in
+                                connectionRow(for: connection)
+                            }
+                        }
+                    }
+                    if !finalizedConnections.isEmpty {
+                        Section("Connections") {
+                            ForEach(finalizedConnections) { connection in
+                                connectionRow(for: connection)
+                            }
                         }
                     }
                 }
@@ -66,11 +83,13 @@ struct ConnectionManagementView: View {
     private var detailContent: some View {
         Group {
             if viewModel.isNewConnection || viewModel.selection != nil {
-                ScrollView(.vertical) {
-                    connectionDetail
-                        .frame(maxWidth: 520)
-                        .padding(.vertical, 24)
-                        .padding(.horizontal, 32)
+                ScrollViewReader { proxy in
+                    ScrollView(.vertical) {
+                        connectionDetail(scrollProxy: proxy)
+                            .frame(maxWidth: 520)
+                            .padding(.vertical, 24)
+                            .padding(.horizontal, 32)
+                    }
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
                 .accessibilityElement(children: .contain)
@@ -83,10 +102,17 @@ struct ConnectionManagementView: View {
         .background(Color(nsColor: .windowBackgroundColor))
     }
 
-    private var connectionDetail: some View {
+    private func connectionDetail(scrollProxy: ScrollViewProxy) -> some View {
         Form {
+            if viewModel.draft.isDraft {
+                draftBanner(scrollProxy: scrollProxy)
+            }
             Section(header: Text("General")) {
-                TextField("Display Name", text: draftBinding(\.name))
+                highlightedField(.name) {
+                    TextField("Display Name", text: draftBinding(\.name))
+                }
+                .id(ConnectionDraft.MissingField.name)
+                .focused($focusedField, equals: .name)
                     .accessibilityIdentifier("Display Name")
 
                 Picker("Database", selection: draftBinding(\.kind)) {
@@ -95,19 +121,31 @@ struct ConnectionManagementView: View {
                     }
                 }
 
-                TextField("Host", text: draftBinding(\.host))
+                highlightedField(.host) {
+                    TextField("Host", text: draftBinding(\.host))
+                }
+                .id(ConnectionDraft.MissingField.host)
+                .focused($focusedField, equals: .host)
                     .accessibilityIdentifier("Host")
-                Stepper(value: draftBinding(\.port), in: 0...65_535) {
-                    HStack {
-                        Text("Port")
-                        Spacer()
-                        Text("\(viewModel.draft.port)")
+                highlightedField(.port) {
+                    Stepper(value: draftBinding(\.port), in: 0...65_535) {
+                        HStack {
+                            Text("Port")
+                            Spacer()
+                            Text("\(viewModel.draft.port)")
+                        }
                     }
                 }
+                .id(ConnectionDraft.MissingField.port)
+                .focused($focusedField, equals: .port)
             }
 
             Section(header: Text("Credentials")) {
-                TextField("Username", text: draftBinding(\.username))
+                highlightedField(.username) {
+                    TextField("Username", text: draftBinding(\.username))
+                }
+                .id(ConnectionDraft.MissingField.username)
+                .focused($focusedField, equals: .username)
                     .accessibilityIdentifier("Username")
                 SecureField("Password", text: draftBinding(\.password))
                 if viewModel.draft.passwordKeychainIdentifier != nil
@@ -124,7 +162,11 @@ struct ConnectionManagementView: View {
                 if viewModel.draft.useSSHTunnel {
                     sshAliasRow
                     sshAuthenticationPicker
-                    TextField("SSH User", text: draftBinding(\.sshUsername))
+                    highlightedField(.sshUsername) {
+                        TextField("SSH User", text: draftBinding(\.sshUsername))
+                    }
+                    .id(ConnectionDraft.MissingField.sshUsername)
+                    .focused($focusedField, equals: .sshUsername)
                     switch viewModel.draft.sshAuthenticationMethod {
                     case .keyFile:
                         sshIdentityRow
@@ -157,54 +199,58 @@ struct ConnectionManagementView: View {
     }
 
     private var sshAliasRow: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            HStack(alignment: .firstTextBaseline, spacing: 8) {
-                TextField("SSH Config Alias", text: draftBinding(\.sshConfigAlias))
-                Menu {
-                    if viewModel.sshAliasOptions.isEmpty {
-                        Button("No aliases available") {}
-                            .disabled(true)
-                    } else {
-                        ForEach(viewModel.sshAliasOptions, id: \.self) { alias in
-                            Button(alias) {
-                                viewModel.updateDraft { $0.sshConfigAlias = alias }
+        highlightedField(.sshAlias) {
+            VStack(alignment: .leading, spacing: 6) {
+                HStack(alignment: .firstTextBaseline, spacing: 8) {
+                    TextField("SSH Config Alias", text: draftBinding(\.sshConfigAlias))
+                        .focused($focusedField, equals: .sshAlias)
+                    Menu {
+                        if viewModel.sshAliasOptions.isEmpty {
+                            Button("No aliases available") {}
+                                .disabled(true)
+                        } else {
+                            ForEach(viewModel.sshAliasOptions, id: \.self) { alias in
+                                Button(alias) {
+                                    viewModel.updateDraft { $0.sshConfigAlias = alias }
+                                }
                             }
                         }
+                    } label: {
+                        Label("Aliases", systemImage: "list.bullet")
+                            .labelStyle(.iconOnly)
+                            .frame(width: 28, height: 24)
                     }
-                } label: {
-                    Label("Aliases", systemImage: "list.bullet")
-                        .labelStyle(.iconOnly)
-                        .frame(width: 28, height: 24)
-                }
-                .disabled(viewModel.sshAliasOptions.isEmpty)
-                .help("Choose an alias parsed from ~/.ssh/config")
+                    .disabled(viewModel.sshAliasOptions.isEmpty)
+                    .help("Choose an alias parsed from ~/.ssh/config")
 
-                Button {
-                    Task {
-                        await viewModel.reloadSSHAliases()
+                    Button {
+                        Task {
+                            await viewModel.reloadSSHAliases()
+                        }
+                    } label: {
+                        Label("Reload", systemImage: "arrow.clockwise")
+                            .labelStyle(.iconOnly)
                     }
-                } label: {
-                    Label("Reload", systemImage: "arrow.clockwise")
-                        .labelStyle(.iconOnly)
+                    .buttonStyle(.borderless)
+                    .help("Reload aliases from ~/.ssh/config")
+                    .disabled(viewModel.isLoadingSSHAliases)
                 }
-                .buttonStyle(.borderless)
-                .help("Reload aliases from ~/.ssh/config")
-                .disabled(viewModel.isLoadingSSHAliases)
-            }
 
-            if viewModel.isLoadingSSHAliases {
-                ProgressView("Loading aliases…")
-                    .controlSize(.small)
-            } else if let error = viewModel.sshAliasError {
-                Text(error)
-                    .font(.footnote)
-                    .foregroundStyle(.secondary)
-            } else if viewModel.sshAliasOptions.isEmpty {
-                Text("No host aliases found in ~/.ssh/config.")
-                    .font(.footnote)
-                    .foregroundStyle(.secondary)
+                if viewModel.isLoadingSSHAliases {
+                    ProgressView("Loading aliases…")
+                        .controlSize(.small)
+                } else if let error = viewModel.sshAliasError {
+                    Text(error)
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                } else if viewModel.sshAliasOptions.isEmpty {
+                    Text("No host aliases found in ~/.ssh/config.")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                }
             }
         }
+        .id(ConnectionDraft.MissingField.sshAlias)
     }
 
     private var sshAuthenticationPicker: some View {
@@ -217,99 +263,110 @@ struct ConnectionManagementView: View {
     }
 
     private var sshIdentityRow: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            HStack(alignment: .firstTextBaseline, spacing: 8) {
-                Menu {
-                    Button("None") {
-                        viewModel.selectSSHIdentity(nil)
-                    }
+        highlightedField(.sshCredential) {
+            VStack(alignment: .leading, spacing: 6) {
+                HStack(alignment: .firstTextBaseline, spacing: 8) {
+                    Menu {
+                        Button("None") {
+                            viewModel.selectSSHIdentity(nil)
+                        }
 
-                    if viewModel.availableSSHIdentities.isEmpty {
-                        Button("No identities available") {}
-                            .disabled(true)
-                    } else {
-                        ForEach(viewModel.availableSSHIdentities, id: \.persistentReference) { identity in
-                            Button(identity.label) {
-                                viewModel.selectSSHIdentity(identity)
+                        if viewModel.availableSSHIdentities.isEmpty {
+                            Button("No identities available") {}
+                                .disabled(true)
+                        } else {
+                            ForEach(viewModel.availableSSHIdentities, id: \.persistentReference) { identity in
+                                Button(identity.label) {
+                                    viewModel.selectSSHIdentity(identity)
+                                }
                             }
                         }
+                    } label: {
+                        Label(
+                            selectedIdentityLabel,
+                            systemImage: "key.fill"
+                        )
                     }
-                } label: {
-                    Label(
-                        selectedIdentityLabel,
-                        systemImage: "key.fill"
-                    )
-                }
-                .menuStyle(.borderlessButton)
-                .frame(minWidth: 220, alignment: .leading)
-                .help("Choose a Keychain identity for SSH authentication")
+                    .menuStyle(.borderlessButton)
+                    .frame(minWidth: 220, alignment: .leading)
+                    .help("Choose a Keychain identity for SSH authentication")
 
-                Button {
-                    Task {
-                        await viewModel.reloadSSHIdentities()
+                    Button {
+                        Task {
+                            await viewModel.reloadSSHIdentities()
+                        }
+                    } label: {
+                        Label("Reload", systemImage: "arrow.clockwise")
+                            .labelStyle(.iconOnly)
                     }
-                } label: {
-                    Label("Reload", systemImage: "arrow.clockwise")
-                        .labelStyle(.iconOnly)
+                    .buttonStyle(.borderless)
+                    .help("Reload Keychain identities")
+                    .disabled(viewModel.isLoadingSSHIdentities)
                 }
-                .buttonStyle(.borderless)
-                .help("Reload Keychain identities")
-                .disabled(viewModel.isLoadingSSHIdentities)
-            }
 
-            if viewModel.isLoadingSSHIdentities {
-                ProgressView("Loading identities…")
-                    .controlSize(.small)
-            } else if let error = viewModel.sshIdentityError {
-                Text(error)
-                    .font(.footnote)
-                    .foregroundColor(.red)
-            } else if viewModel.availableSSHIdentities.isEmpty {
-                Text("No Keychain identities accessible. Use Keychain Access to grant TableGlass permission.")
-                    .font(.footnote)
-                    .foregroundStyle(.secondary)
-            } else if viewModel.draft.sshKeychainIdentityReference == nil {
-                Text("Select a Keychain identity to enable SSH tunneling.")
-                    .font(.footnote)
-                    .foregroundStyle(.secondary)
-            } else if let label = viewModel.draft.sshKeychainIdentityLabel {
-                Text("Using Keychain identity: \(label)")
-                    .font(.footnote)
-                    .foregroundStyle(.secondary)
+                if viewModel.isLoadingSSHIdentities {
+                    ProgressView("Loading identities…")
+                        .controlSize(.small)
+                } else if let error = viewModel.sshIdentityError {
+                    Text(error)
+                        .font(.footnote)
+                        .foregroundColor(.red)
+                } else if viewModel.availableSSHIdentities.isEmpty {
+                    Text("No Keychain identities accessible. Use Keychain Access to grant TableGlass permission.")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                } else if viewModel.draft.sshKeychainIdentityReference == nil {
+                    Text("Select a Keychain identity to enable SSH tunneling.")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                } else if let label = viewModel.draft.sshKeychainIdentityLabel {
+                    Text("Using Keychain identity: \(label)")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                }
             }
         }
+        .id(ConnectionDraft.MissingField.sshCredential)
     }
 
     private var sshKeyFileRow: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            HStack(alignment: .firstTextBaseline, spacing: 8) {
-                TextField("Key File Path", text: draftBinding(\.sshKeyFilePath))
-                Button {
-                    isSSHKeyFileImporterPresented = true
-                } label: {
-                    Label("Browse", systemImage: "folder")
-                        .labelStyle(.iconOnly)
+        highlightedField(.sshCredential) {
+            VStack(alignment: .leading, spacing: 6) {
+                HStack(alignment: .firstTextBaseline, spacing: 8) {
+                    TextField("Key File Path", text: draftBinding(\.sshKeyFilePath))
+                        .focused($focusedField, equals: .sshKeyFile)
+                    Button {
+                        isSSHKeyFileImporterPresented = true
+                    } label: {
+                        Label("Browse", systemImage: "folder")
+                            .labelStyle(.iconOnly)
+                    }
+                    .help("Choose a private key file")
                 }
-                .help("Choose a private key file")
-            }
 
-            Text("TableGlass stores only secure references to your SSH keys via the macOS Keychain.")
-                .font(.footnote)
-                .foregroundStyle(.secondary)
-        }
-    }
-
-    private var sshPasswordRow: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            SecureField("SSH Password", text: draftBinding(\.sshPassword))
-            if viewModel.draft.sshPasswordKeychainIdentifier != nil
-                && viewModel.draft.sshPassword.isEmpty
-            {
-                Text("Password stored securely")
+                Text("TableGlass stores only secure references to your SSH keys via the macOS Keychain.")
                     .font(.footnote)
                     .foregroundStyle(.secondary)
             }
         }
+        .id(ConnectionDraft.MissingField.sshCredential)
+    }
+
+    private var sshPasswordRow: some View {
+        highlightedField(.sshCredential) {
+            VStack(alignment: .leading, spacing: 6) {
+                SecureField("SSH Password", text: draftBinding(\.sshPassword))
+                    .focused($focusedField, equals: .sshPassword)
+                if viewModel.draft.sshPasswordKeychainIdentifier != nil
+                    && viewModel.draft.sshPassword.isEmpty
+                {
+                    Text("Password stored securely")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                }
+            }
+        }
+        .id(ConnectionDraft.MissingField.sshCredential)
     }
 
     private var sshAgentStatusView: some View {
@@ -349,6 +406,16 @@ struct ConnectionManagementView: View {
 
             Button {
                 Task {
+                    _ = await viewModel.saveDraft()
+                }
+            } label: {
+                Label("Save Draft", systemImage: "doc.badge.clock")
+            }
+            .help("Store this connection without completing validation.")
+            .disabled(!viewModel.draft.hasAnyContent || viewModel.isSaving || isConnecting)
+
+            Button {
+                Task {
                     _ = await viewModel.saveCurrentConnection()
                 }
             } label: {
@@ -375,7 +442,12 @@ struct ConnectionManagementView: View {
             .accessibilityIdentifier("connectionManagement.connectButton")
             .keyboardShortcut(.defaultAction)
             .buttonStyle(.borderedProminent)
-            .disabled(!viewModel.draft.isValid || viewModel.isSaving || isConnecting)
+            .disabled(
+                !viewModel.draft.isValid
+                    || viewModel.draft.isDraft
+                    || viewModel.isSaving
+                    || isConnecting
+            )
         }
         .alert("Delete Connection?", isPresented: $isDeleteConfirmationPresented) {
             Button("Delete", role: .destructive) {
@@ -415,6 +487,126 @@ struct ConnectionManagementView: View {
                 .clipShape(RoundedRectangle(cornerRadius: 8))
             }
         }
+    }
+
+    private func connectionRow(for connection: ConnectionProfile) -> some View {
+        HStack {
+            Label {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(connection.displayName)
+                    Text(connection.kind.label)
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                }
+            } icon: {
+                Image(systemName: iconName(for: connection.kind))
+            }
+
+            Spacer()
+
+            if connection.isDraft {
+                Text("Draft")
+                    .font(.caption2.weight(.semibold))
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 4)
+                    .background(Color.orange.opacity(0.15), in: Capsule())
+            }
+        }
+        .tag(connection.id)
+    }
+
+    private var missingFieldSummary: String? {
+        let labels = viewModel.draft.missingRequiredFields.map(\.label)
+        guard !labels.isEmpty else { return nil }
+        return "Missing: " + labels.joined(separator: ", ")
+    }
+
+    private func draftBanner(scrollProxy: ScrollViewProxy) -> some View {
+        HStack(alignment: .firstTextBaseline, spacing: 10) {
+            Image(
+                systemName: viewModel.draft.isValid
+                    ? "doc.badge.clock.fill"
+                    : "exclamationmark.triangle.fill"
+            )
+            .foregroundStyle(viewModel.draft.isValid ? Color.accentColor : Color.orange)
+
+            VStack(alignment: .leading, spacing: 4) {
+                Text("Draft in progress")
+                    .font(.headline)
+                if let summary = missingFieldSummary {
+                    Text(summary)
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                } else {
+                    Text("All required fields are filled. Save to promote this draft.")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                }
+            }
+
+            Spacer()
+
+            if let missing = viewModel.draft.nextMissingField {
+                Button {
+                    jump(to: missing, using: scrollProxy)
+                } label: {
+                    Label("Jump to next", systemImage: "arrow.down.circle")
+                }
+                .buttonStyle(.bordered)
+            }
+        }
+        .padding(10)
+        .background(Color(nsColor: .controlBackgroundColor))
+        .clipShape(RoundedRectangle(cornerRadius: 8))
+        .id("draft-banner")
+    }
+
+    private func jump(to missing: ConnectionDraft.MissingField, using proxy: ScrollViewProxy) {
+        withAnimation {
+            proxy.scrollTo(missing, anchor: .center)
+        }
+        focusedField = focusTarget(for: missing)
+    }
+
+    private func focusTarget(for missing: ConnectionDraft.MissingField) -> FieldFocus? {
+        switch missing {
+        case .name:
+            return .name
+        case .host:
+            return .host
+        case .port:
+            return .port
+        case .username:
+            return .username
+        case .sshAlias:
+            return .sshAlias
+        case .sshUsername:
+            return .sshUsername
+        case .sshCredential:
+            switch viewModel.draft.sshAuthenticationMethod {
+            case .keyFile:
+                return .sshKeyFile
+            case .usernameAndPassword:
+                return .sshPassword
+            case .sshAgent:
+                return .sshUsername
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func highlightedField<Content: View>(
+        _ missingField: ConnectionDraft.MissingField,
+        @ViewBuilder content: () -> Content
+    ) -> some View {
+        let shouldHighlight = viewModel.draft.hasAnyContent || !viewModel.isNewConnection
+        let isMissing = shouldHighlight && viewModel.draft.missingRequiredFields.contains(missingField)
+        content()
+            .padding(.vertical, isMissing ? 4 : 0)
+            .background(
+                RoundedRectangle(cornerRadius: 8)
+                    .strokeBorder(Color.orange.opacity(isMissing ? 0.75 : 0), lineWidth: isMissing ? 1 : 0)
+            )
     }
 
     private func draftBinding<Value>(_ keyPath: WritableKeyPath<ConnectionDraft, Value>) -> Binding<
@@ -457,6 +649,17 @@ struct ConnectionManagementView: View {
         }
     }
 
+    private enum FieldFocus: Hashable {
+        case name
+        case host
+        case port
+        case username
+        case sshAlias
+        case sshUsername
+        case sshPassword
+        case sshKeyFile
+    }
+
     @MainActor
     private func connectAndOpenBrowser() async {
         guard !isConnecting else { return }
@@ -482,6 +685,37 @@ struct ConnectionManagementView: View {
                 viewModel.presentError(message)
             }
         }
+    }
+}
+
+private extension ConnectionDraft.MissingField {
+    var label: String {
+        switch self {
+        case .name:
+            return "Display Name"
+        case .host:
+            return "Host"
+        case .port:
+            return "Port"
+        case .username:
+            return "Username"
+        case .sshAlias:
+            return "SSH Alias"
+        case .sshUsername:
+            return "SSH User"
+        case .sshCredential:
+            return "SSH Credential"
+        }
+    }
+}
+
+extension ConnectionProfile {
+    var displayName: String {
+        let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmed.isEmpty {
+            return isDraft ? "Untitled Draft" : "Untitled Connection"
+        }
+        return trimmed
     }
 }
 

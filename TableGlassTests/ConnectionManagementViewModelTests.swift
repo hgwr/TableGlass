@@ -57,6 +57,40 @@ struct ConnectionManagementViewModelTests {
         #expect(profile?.id == viewModel.selection)
     }
 
+    @Test func saveDraftAllowsPartialFields() async throws {
+        let store = MockConnectionStore(connections: [])
+        let viewModel = makeViewModel(store: store)
+
+        viewModel.startCreatingConnection(kind: .postgreSQL)
+        viewModel.updateDraft {
+            $0.name = "Work in Progress"
+        }
+
+        let saved = await viewModel.saveDraft()
+
+        #expect(saved?.isDraft == true)
+        #expect(viewModel.connections.count == 1)
+        #expect(viewModel.selection == saved?.id)
+        #expect(viewModel.draft.isDraft)
+
+        let persisted = await store.savedConnections().first
+        #expect(persisted?.isDraft == true)
+        #expect(persisted?.host.isEmpty == true)
+    }
+
+    @Test func saveDraftRequiresMeaningfulInput() async throws {
+        let store = MockConnectionStore(connections: [])
+        let viewModel = makeViewModel(store: store)
+
+        viewModel.startCreatingConnection(kind: .postgreSQL)
+
+        let saved = await viewModel.saveDraft()
+
+        #expect(saved == nil)
+        #expect(viewModel.lastError == "Add at least one field before saving a draft.")
+        #expect(viewModel.connections.isEmpty)
+    }
+
     @Test func startCreatingConnectionResetsDraft() async throws {
         let profiles = [
             ConnectionProfile(
@@ -77,6 +111,52 @@ struct ConnectionManagementViewModelTests {
         #expect(viewModel.isNewConnection)
         #expect(viewModel.draft.kind == .sqlite)
         #expect(viewModel.draft.port == 0)
+    }
+
+    @Test func draftProfilesRestoreAfterReload() async throws {
+        let draftProfile = ConnectionProfile(
+            name: "Staging Draft",
+            kind: .postgreSQL,
+            host: "",
+            port: 0,
+            username: "",
+            isDraft: true
+        )
+        let store = MockConnectionStore(connections: [draftProfile])
+        let viewModel = makeViewModel(store: store)
+
+        await viewModel.loadConnections()
+
+        #expect(viewModel.selection == draftProfile.id)
+        #expect(viewModel.connections.first?.isDraft == true)
+        #expect(viewModel.draft.isDraft)
+        #expect(!viewModel.draft.missingRequiredFields.isEmpty)
+    }
+
+    @Test func draftCanBePromotedToFinalProfile() async throws {
+        let draftProfile = ConnectionProfile(
+            name: "Promote Me",
+            kind: .postgreSQL,
+            host: "",
+            port: 0,
+            username: "",
+            isDraft: true
+        )
+        let store = MockConnectionStore(connections: [draftProfile])
+        let viewModel = makeViewModel(store: store)
+
+        await viewModel.loadConnections()
+        viewModel.updateDraft {
+            $0.host = "db.internal"
+            $0.port = 5432
+            $0.username = "postgres"
+        }
+
+        let saved = await viewModel.saveCurrentConnection()
+
+        #expect(saved?.isDraft == false)
+        #expect(viewModel.connections.first?.isDraft == false)
+        #expect(await store.savedConnections().last?.isDraft == false)
     }
 
     @Test func clearingSelectionExitsEditingMode() async throws {
