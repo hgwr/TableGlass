@@ -93,8 +93,7 @@ private struct DatabaseBrowserSessionView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            header
-            Divider()
+            connectionToolbar
             NavigationSplitView {
                 sidebar
             } detail: {
@@ -168,27 +167,12 @@ private struct DatabaseBrowserSessionView: View {
         queryEditorViewModel.requestExecute(isReadOnly: session.isReadOnly)
     }
 
-    private var header: some View {
-        HStack(spacing: 16) {
-            HStack(spacing: 8) {
-                Circle()
-                    .fill(session.status.indicatorColor)
-                    .frame(width: 10, height: 10)
-                Text(session.databaseName)
-                    .font(.headline)
-                    .bold()
-                Text(session.status.description)
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
-            }
-            Spacer()
-            Button("Show Log") {
-                isShowingLog = true
-            }
-            .buttonStyle(.bordered)
-            .accessibilityIdentifier(DatabaseBrowserAccessibility.showLogButton.rawValue)
-
-            Toggle("Read-Only", isOn: Binding(
+    private var connectionToolbar: some View {
+        ConnectionToolbar(
+            databaseName: session.databaseName,
+            status: session.status,
+            statusDescription: session.status.description,
+            toggleState: Binding(
                 get: { toggleState },
                 set: { newValue in
                     toggleState = newValue
@@ -197,18 +181,14 @@ private struct DatabaseBrowserSessionView: View {
                     logger.debug("User requested access mode change for \(self.session.databaseName, privacy: .public) to \(targetMode.logDescription)")
                     prepareModeChange(for: targetMode)
                 }
-            ))
-            .toggleStyle(.switch)
-            .accessibilityIdentifier(DatabaseBrowserAccessibility.readOnlyToggle.rawValue)
-            .disabled(session.isUpdatingMode)
-        }
-        .padding(.vertical, 12)
-        .padding(.horizontal, 16)
-        .background(.thickMaterial)
+            ),
+            isUpdatingMode: session.isUpdatingMode,
+            onShowLog: { isShowingLog = true }
+        )
     }
 
     private var sidebar: some View {
-        VStack(spacing: 8) {
+        VStack(spacing: 0) {
             HStack(spacing: 8) {
                 Text("Objects")
                     .font(.subheadline)
@@ -250,7 +230,14 @@ private struct DatabaseBrowserSessionView: View {
                 .accessibilityIdentifier(DatabaseBrowserAccessibility.collapseAllButton.rawValue)
                 .disabled(session.isExpandingAll)
             }
-            .padding(.horizontal, 8)
+            .padding(.horizontal, 12)
+            .padding(.vertical, 10)
+            .background(.ultraThinMaterial)
+            .overlay(alignment: .bottom) {
+                Divider()
+                    .padding(.leading, -8)
+                    .padding(.trailing, -8)
+            }
 
             DatabaseObjectTreeList(session: session)
         }
@@ -258,27 +245,20 @@ private struct DatabaseBrowserSessionView: View {
     }
 
     private var detailView: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            queryEditorSection
+            resultsCard
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .padding(16)
+        .background(detailBackgroundColor)
+    }
+
+    private var detailBackgroundColor: Color {
         #if os(macOS)
-        VSplitView {
-            queryEditorSection
-                .frame(minHeight: 180)
-            detailSection
-                .frame(minHeight: 220)
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-        .padding()
-        .background(.background)
+        Color(nsColor: .windowBackgroundColor)
         #else
-        VStack(alignment: .leading, spacing: 12) {
-            queryEditorSection
-            Divider()
-            detailHeader
-            Divider()
-            detailContent
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-        .padding()
-        .background(.background)
+        Color(.systemBackground)
         #endif
     }
 
@@ -291,68 +271,74 @@ private struct DatabaseBrowserSessionView: View {
         )
     }
 
-    private var detailSection: some View {
+    private var resultsCard: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Divider()
-            detailHeader
-            Divider()
-            detailContent
+            HStack(spacing: 8) {
+                Text("Results")
+                    .font(.headline)
+                Spacer()
+                if selectedTableIdentifier != nil {
+                    detailModePicker
+                }
+            }
+
+            detailSummary
+            resultsContent
         }
+        .padding(16)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .background(.regularMaterial)
+        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
     }
 
-    private var detailHeader: some View {
+    private var detailSummary: some View {
         Group {
             if let node = session.selectedNode {
-                Text(verbatim: node.title)
-                    .font(.title2)
-                    .bold()
-                    .accessibilityIdentifier(DatabaseBrowserAccessibility.detailTitle.rawValue)
-                    // Explicit label/value helps UI tests read the selected object's title.
-                    .accessibilityLabel(node.title)
-                    .accessibilityValue(node.title)
-                Label(node.kindDisplayName, systemImage: node.kind.systemImageName)
-                    .foregroundStyle(.secondary)
-                Text(pathDescription(for: node))
-                    .font(.callout)
-                    .foregroundStyle(.secondary)
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(verbatim: node.title)
+                        .font(.title3)
+                        .bold()
+                        .accessibilityIdentifier(DatabaseBrowserAccessibility.detailTitle.rawValue)
+                        .accessibilityLabel(node.title)
+                        .accessibilityValue(node.title)
+                    Label(node.kindDisplayName, systemImage: node.kind.systemImageName)
+                        .foregroundStyle(.secondary)
+                    Text(pathDescription(for: node))
+                        .font(.callout)
+                        .foregroundStyle(.secondary)
+                }
             } else {
                 Text("Select an object to view details")
-                    .font(.title3)
+                    .font(.callout)
                     .foregroundStyle(.secondary)
             }
         }
     }
 
-    private var detailContent: some View {
-        let isTableSelected = selectedTableIdentifier != nil
-
-        return VStack(alignment: .leading, spacing: 12) {
-            if isTableSelected {
-                detailModePicker
-            }
-
-            switch effectiveDetailMode {
-            case .results:
-                DatabaseQueryResultSection(
-                    viewModel: queryEditorViewModel,
-                    isReadOnly: session.isReadOnly,
-                    onExecute: { detailDisplayMode = .results }
+    @ViewBuilder
+    private var resultsContent: some View {
+        switch effectiveDetailMode {
+        case .results:
+            DatabaseQueryResultSection(
+                viewModel: queryEditorViewModel,
+                isReadOnly: session.isReadOnly,
+                onExecute: { detailDisplayMode = .results },
+                placeholderText: "Run a query to see results here."
+            )
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        case .tableEditor:
+            if let table = selectedTableIdentifier {
+                DatabaseTableContentView(
+                    viewModel: tableContentViewModel,
+                    table: table,
+                    columns: selectedTableColumns,
+                    isReadOnly: session.isReadOnly
                 )
-                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-            case .tableEditor:
-                if let table = selectedTableIdentifier {
-                    DatabaseTableContentView(
-                        viewModel: tableContentViewModel,
-                        table: table,
-                        columns: selectedTableColumns,
-                        isReadOnly: session.isReadOnly
-                    )
-                    .accessibilityIdentifier(DatabaseBrowserAccessibility.tableDetail.rawValue)
-                } else {
-                    Text("Select a table to view and edit its data.")
-                        .foregroundStyle(.secondary)
-                        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-                }
+                .accessibilityIdentifier(DatabaseBrowserAccessibility.tableDetail.rawValue)
+            } else {
+                Text("Select a table to view and edit its data.")
+                    .foregroundStyle(.secondary)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
             }
         }
     }
@@ -526,6 +512,51 @@ private extension DatabaseAccessMode {
     }
 }
 
+private struct ConnectionToolbar: View {
+    let databaseName: String
+    let status: DatabaseBrowserSessionStatus
+    let statusDescription: String
+    let toggleState: Binding<Bool>
+    let isUpdatingMode: Bool
+    let onShowLog: () -> Void
+
+    var body: some View {
+        HStack(spacing: 12) {
+            HStack(spacing: 8) {
+                Circle()
+                    .fill(status.indicatorColor)
+                    .frame(width: 10, height: 10)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(databaseName)
+                        .font(.headline)
+                        .fontWeight(.semibold)
+                    Text(statusDescription)
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                }
+            }
+            Spacer()
+            Button("Show Log", action: onShowLog)
+                .buttonStyle(.plain)
+                .font(.subheadline.weight(.semibold))
+                .padding(.vertical, 4)
+                .padding(.horizontal, 8)
+                .accessibilityIdentifier(DatabaseBrowserAccessibility.showLogButton.rawValue)
+
+            Toggle("Read-Only", isOn: toggleState)
+                .toggleStyle(.switch)
+                .accessibilityIdentifier(DatabaseBrowserAccessibility.readOnlyToggle.rawValue)
+                .disabled(isUpdatingMode)
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 8)
+        .background(.ultraThinMaterial)
+        .overlay(alignment: .bottom) {
+            Divider()
+        }
+    }
+}
+
 private struct DatabaseBrowserPlaceholderView: View {
     var body: some View {
         VStack(spacing: 12) {
@@ -694,8 +725,7 @@ private struct DatabaseBrowserTabView: NSViewRepresentable {
         tabView.identifier = NSUserInterfaceItemIdentifier(DatabaseBrowserAccessibility.tabGroup.rawValue)
         tabView.setAccessibilityIdentifier(DatabaseBrowserAccessibility.tabGroup.rawValue)
         tabView.setAccessibilityRole(.tabGroup)
-        tabView.tabViewType = .topTabsBezelBorder
-        tabView.tabPosition = .top
+        context.coordinator.configureTabView(tabView, forSessionCount: viewModel.sessions.count)
         context.coordinator.tabView = tabView
         context.coordinator.updateTabs(
             sessions: viewModel.sessions,
@@ -764,8 +794,7 @@ private struct DatabaseBrowserTabView: NSViewRepresentable {
             tabView.identifier = NSUserInterfaceItemIdentifier(DatabaseBrowserAccessibility.tabGroup.rawValue)
             tabView.setAccessibilityIdentifier(DatabaseBrowserAccessibility.tabGroup.rawValue)
             tabView.setAccessibilityRole(.tabGroup)
-            tabView.tabViewType = .topTabsBezelBorder
-            tabView.tabPosition = .top
+            configureTabView(tabView, forSessionCount: sessions.count)
 
             if let selectedID,
                let item = items[selectedID] {
@@ -778,6 +807,15 @@ private struct DatabaseBrowserTabView: NSViewRepresentable {
                 if viewModel.selectedSessionID != firstSession.id {
                     viewModel.selectedSessionID = firstSession.id
                 }
+            }
+        }
+
+        func configureTabView(_ tabView: NSTabView, forSessionCount count: Int) {
+            if count > 1 {
+                tabView.tabViewType = .topTabsBezelBorder
+                tabView.tabPosition = .top
+            } else {
+                tabView.tabViewType = .noTabsNoBorder
             }
         }
 
