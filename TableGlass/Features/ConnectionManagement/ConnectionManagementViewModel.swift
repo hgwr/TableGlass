@@ -8,6 +8,8 @@ final class ConnectionManagementViewModel: ObservableObject {
     @Published private(set) var connections: [ConnectionProfile] = []
     @Published var selection: ConnectionProfile.ID?
     @Published var draft: ConnectionDraft = .empty()
+    @Published var portInput: String = ""
+    @Published private(set) var portValidationMessage: String? = nil
     @Published private(set) var isNewConnection: Bool = false
     @Published private(set) var isSaving: Bool = false
     @Published private(set) var lastError: String?
@@ -24,6 +26,7 @@ final class ConnectionManagementViewModel: ObservableObject {
     private let sshKeychainService: any SSHKeychainService
     private let sshAgentService: any SSHAgentService
     private let databasePasswordStore: any DatabasePasswordStoring
+    private let portFormatter: NumberFormatter
     private var hasLoadedSSHAliases = false
     private var hasLoadedSSHIdentities = false
     private let logger = Logger(subsystem: "com.tableglass", category: "ConnectionManagement")
@@ -41,6 +44,18 @@ final class ConnectionManagementViewModel: ObservableObject {
         self.sshAgentService = sshAgentService
         self.databasePasswordStore = databasePasswordStore
         self.isSSHAgentReachable = sshAgentService.isAgentReachable()
+        portFormatter = Self.makePortFormatter()
+        resetPortInput(to: draft.port, clearValidation: true)
+    }
+
+    private static func makePortFormatter() -> NumberFormatter {
+        let formatter = NumberFormatter()
+        formatter.numberStyle = .none
+        formatter.allowsFloats = false
+        formatter.minimum = 0
+        formatter.maximum = 65_535
+        formatter.usesGroupingSeparator = false
+        return formatter
     }
 
     var sshAliasOptions: [String] {
@@ -50,6 +65,22 @@ final class ConnectionManagementViewModel: ObservableObject {
             options.insert(current, at: 0)
         }
         return options
+    }
+
+    var missingRequiredFields: [ConnectionDraft.MissingField] {
+        var missing = draft.missingRequiredFields
+        if portValidationMessage != nil && !missing.contains(.port) {
+            missing.append(.port)
+        }
+        return missing
+    }
+
+    var nextMissingField: ConnectionDraft.MissingField? {
+        missingRequiredFields.first
+    }
+
+    var isDraftValid: Bool {
+        portValidationMessage == nil && missingRequiredFields.isEmpty
     }
 
     func loadConnections() async {
@@ -71,6 +102,46 @@ final class ConnectionManagementViewModel: ObservableObject {
             connections = []
             startCreatingConnection()
         }
+    }
+
+    func updatePortInput(_ newValue: String) {
+        portInput = newValue
+        validatePortInput(newValue)
+    }
+
+    private func validatePortInput(_ rawValue: String) {
+        let trimmed = rawValue.trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmed.isEmpty {
+            if draft.kind == .sqlite {
+                portValidationMessage = nil
+                updateDraft { $0.port = ConnectionProfile.defaultPort(for: .sqlite) }
+            } else {
+                portValidationMessage = "Enter a port number."
+            }
+            return
+        }
+
+        guard let number = portFormatter.number(from: trimmed) else {
+            portValidationMessage = "Port must be a number."
+            return
+        }
+
+        let intValue = number.intValue
+        if intValue < 0 || intValue > 65_535 {
+            portValidationMessage = "Port must be between 0 and 65535."
+            return
+        }
+
+        portValidationMessage = nil
+        updateDraft { $0.port = intValue }
+        portInput = portFormatter.string(from: NSNumber(value: intValue)) ?? "\(intValue)"
+    }
+
+    private func resetPortInput(to port: Int, clearValidation: Bool = false) {
+        if clearValidation {
+            portValidationMessage = nil
+        }
+        portInput = portFormatter.string(from: NSNumber(value: port)) ?? "\(port)"
     }
 
     func reloadSSHAliases() async {
@@ -272,6 +343,7 @@ final class ConnectionManagementViewModel: ObservableObject {
         }
         selection = connection.id
         draft = ConnectionDraft(connection: connection)
+        resetPortInput(to: draft.port, clearValidation: true)
         if !draft.sshConfigAlias.isEmpty {
             includeAliasInList(draft.sshConfigAlias)
         }
@@ -296,6 +368,7 @@ final class ConnectionManagementViewModel: ObservableObject {
     func startCreatingConnection(kind: ConnectionProfile.DatabaseKind = .postgreSQL) {
         selection = nil
         draft = .empty(kind: kind)
+        resetPortInput(to: draft.port, clearValidation: true)
         isNewConnection = true
         lastError = nil
         resetDraftSSHIdentity()
@@ -305,12 +378,14 @@ final class ConnectionManagementViewModel: ObservableObject {
     func clearSelection() {
         selection = nil
         isNewConnection = false
+        resetPortInput(to: draft.port, clearValidation: true)
         resetDraftSSHIdentity()
         refreshSSHAgentStatus()
     }
 
     func updateDraft(_ transform: (inout ConnectionDraft) -> Void) {
         let previousKind = draft.kind
+        let previousPort = draft.port
         let previousPassword = draft.password
         let previousUseSSH = draft.useSSHTunnel
         let previousAlias = draft.sshConfigAlias
@@ -319,6 +394,12 @@ final class ConnectionManagementViewModel: ObservableObject {
         transform(&draft)
         if draft.kind != previousKind {
             draft.normalizeAfterKindChange(previousKind: previousKind)
+        }
+        if draft.port != previousPort || draft.kind != previousKind {
+            resetPortInput(to: draft.port, clearValidation: draft.kind != previousKind)
+            if draft.kind != previousKind {
+                validatePortInput(portInput)
+            }
         }
         if draft.password != previousPassword, !draft.password.isEmpty {
             draft.passwordKeychainIdentifier = nil
@@ -384,7 +465,12 @@ final class ConnectionManagementViewModel: ObservableObject {
 
     @discardableResult
     private func persistCurrentConnection(asDraft: Bool) async -> ConnectionProfile? {
-        if !asDraft && !draft.isValid {
+        if let portValidationMessage {
+            lastError = portValidationMessage
+            return nil
+        }
+
+        if !asDraft && !isDraftValid {
             lastError = "Please complete the required fields."
             return nil
         }
@@ -714,13 +800,6 @@ struct ConnectionDraft: Equatable {
     }
 
     private static func defaultPort(for kind: ConnectionProfile.DatabaseKind) -> Int {
-        switch kind {
-        case .postgreSQL:
-            return 5432
-        case .mySQL:
-            return 3306
-        case .sqlite:
-            return 0
-        }
+        ConnectionProfile.defaultPort(for: kind)
     }
 }

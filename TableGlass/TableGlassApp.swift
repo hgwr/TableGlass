@@ -15,11 +15,13 @@ import AppKit
 struct TableGlassApp: App {
     @StateObject private var environment: AppEnvironment
     @StateObject private var connectionManagementViewModel: ConnectionManagementViewModel
+    private let dynamicTypeOverride: DynamicTypeSize?
 
     init() {
         let environment: AppEnvironment
         let isRunningUITests = ProcessInfo.processInfo.isRunningUITests
         let isBrowserUITest = ProcessInfo.processInfo.arguments.contains(UITestArguments.databaseBrowser.rawValue)
+        dynamicTypeOverride = ProcessInfo.processInfo.arguments.contains("--uitest-large-type") ? .accessibility3 : nil
 
         if isRunningUITests {
             environment = AppEnvironment(dependencies: .preview)
@@ -76,20 +78,24 @@ struct TableGlassApp: App {
 extension TableGlassApp {
     fileprivate var connectionManagementWindow: some Scene {
         WindowGroup("Connection Management", id: SceneID.connectionManagement.rawValue) {
-            ConnectionManagementView(viewModel: connectionManagementViewModel)
-                .environmentObject(environment)
-                .frame(minWidth: 640, minHeight: 480)
+            applyDynamicTypeOverride(
+                ConnectionManagementView(viewModel: connectionManagementViewModel)
+                    .environmentObject(environment)
+            )
+            .frame(minWidth: 800, minHeight: 600)
         }
-        .defaultSize(width: 760, height: 520)
+        .defaultSize(width: 960, height: 720)
     }
 }
 
 extension TableGlassApp {
     fileprivate var databaseBrowserWindow: some Scene {
         WindowGroup("Database Browser", id: SceneID.databaseBrowser.rawValue) {
-            DatabaseBrowserWindow(viewModel: environment.makeDatabaseBrowserViewModel())
-                .environmentObject(environment)
-                .frame(minWidth: 900, minHeight: 600)
+            applyDynamicTypeOverride(
+                DatabaseBrowserWindow(viewModel: environment.makeDatabaseBrowserViewModel())
+                    .environmentObject(environment)
+            )
+            .frame(minWidth: 900, minHeight: 600)
         }
         .defaultSize(width: 1080, height: 720)
     }
@@ -99,6 +105,17 @@ extension TableGlassApp {
             UITestShimView()
         }
         .defaultSize(width: 400, height: 300)
+    }
+}
+
+private extension TableGlassApp {
+    @ViewBuilder
+    func applyDynamicTypeOverride<Content: View>(_ content: Content) -> some View {
+        if let dynamicTypeOverride {
+            content.environment(\.dynamicTypeSize, dynamicTypeOverride)
+        } else {
+            content
+        }
     }
 }
 

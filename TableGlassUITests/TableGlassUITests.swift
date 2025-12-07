@@ -47,6 +47,29 @@ final class TableGlassUITests: XCTestCase {
     }
 
     @MainActor
+    func testConnectionButtonsReachableWithLargeText() throws {
+        let app = makeApplication()
+        app.launchArguments.append("--uitest-large-type")
+        app.launch()
+
+        let form = element(withIdentifier: "connectionManagement.form", in: app)
+        XCTAssertTrue(form.waitForExistence(timeout: 5))
+
+        let scrollView = app.scrollViews["connectionManagement.form"]
+        if scrollView.exists {
+            scrollView.swipeUp()
+        }
+
+        let saveButton = app.buttons["connectionManagement.saveButton"]
+        XCTAssertTrue(saveButton.waitForExistence(timeout: 2))
+        XCTAssertTrue(saveButton.isHittable)
+
+        let connectButton = app.buttons["connectionManagement.connectButton"]
+        XCTAssertTrue(connectButton.waitForExistence(timeout: 2))
+        XCTAssertTrue(connectButton.isHittable)
+    }
+
+    @MainActor
     func testMenuItemsExposeConnectionWorkflow() throws {
         let app = makeApplication()
         app.launch()
