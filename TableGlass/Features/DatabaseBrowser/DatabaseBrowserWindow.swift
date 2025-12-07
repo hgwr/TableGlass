@@ -8,6 +8,10 @@ import TableGlassKit
 struct DatabaseBrowserWindow: View {
     @StateObject private var viewModel: DatabaseBrowserViewModel
     @StateObject private var quickPaletteViewModel: QuickResourcePaletteViewModel
+#if os(macOS)
+    @State private var hostingWindow: NSWindow?
+    @State private var quickOpenKeyMonitor: Any?
+#endif
     private var isBrowserUITest: Bool {
         ProcessInfo.processInfo.arguments.contains(UITestArguments.databaseBrowser.rawValue)
     }
@@ -62,6 +66,23 @@ struct DatabaseBrowserWindow: View {
             quickPaletteOverlay
         }
         .animation(.easeInOut(duration: 0.12), value: quickPaletteViewModel.isPresented)
+#if os(macOS)
+        .background(WindowAccessor { window in
+            hostingWindow = window
+            installQuickOpenMonitor(for: window)
+        })
+        .onReceive(NotificationCenter.default.publisher(for: .databaseBrowserQuickOpenRequested)) { notification in
+            guard let hostingWindow,
+                  let senderWindow = notification.object as? NSWindow,
+                  hostingWindow == senderWindow else { return }
+            Task { @MainActor in
+                quickPaletteViewModel.present()
+            }
+        }
+        .onDisappear {
+            removeQuickOpenMonitor()
+        }
+#endif
         .task {
             await viewModel.bootstrap()
         }
@@ -804,6 +825,33 @@ private struct DatabaseObjectTreeRow: View {
 }
 
 #if os(macOS)
+private extension DatabaseBrowserWindow {
+    func installQuickOpenMonitor(for window: NSWindow?) {
+        removeQuickOpenMonitor()
+        guard let window else { return }
+
+        quickOpenKeyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
+            guard event.window == window else { return event }
+            let isCommandP = event.modifierFlags.contains(.command)
+                && event.charactersIgnoringModifiers?.lowercased() == "p"
+            if isCommandP {
+                Task { @MainActor in
+                    quickPaletteViewModel.present()
+                }
+                return nil
+            }
+            return event
+        }
+    }
+
+    func removeQuickOpenMonitor() {
+        if let quickOpenKeyMonitor {
+            NSEvent.removeMonitor(quickOpenKeyMonitor)
+        }
+        quickOpenKeyMonitor = nil
+    }
+}
+
 private struct DatabaseBrowserTabView: NSViewRepresentable {
     @ObservedObject var viewModel: DatabaseBrowserViewModel
     let onShowQuickOpenPalette: @MainActor @Sendable () -> Void
@@ -939,6 +987,24 @@ private struct DatabaseBrowserTabView: NSViewRepresentable {
                 },
                 onShowQuickOpenPalette: onShowQuickOpenPalette
             )
+        }
+    }
+}
+
+private struct WindowAccessor: NSViewRepresentable {
+    let onResolve: (NSWindow?) -> Void
+
+    func makeNSView(context: Context) -> NSView {
+        let view = NSView()
+        DispatchQueue.main.async { [weak view] in
+            onResolve(view?.window)
+        }
+        return view
+    }
+
+    func updateNSView(_ nsView: NSView, context: Context) {
+        DispatchQueue.main.async { [weak nsView] in
+            onResolve(nsView?.window)
         }
     }
 }
