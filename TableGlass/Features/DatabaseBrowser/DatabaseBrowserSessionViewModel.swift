@@ -16,6 +16,7 @@ final class DatabaseBrowserSessionViewModel: ObservableObject, Identifiable {
     @Published private(set) var isRefreshing: Bool = false
     @Published private(set) var isExpandingAll: Bool = false
     @Published private(set) var loadError: String?
+    @Published private(set) var quickResourceIndex: QuickResourceIndex?
     let queryLog: DatabaseQueryLog
     let queryHistory: DatabaseQueryHistory
 
@@ -25,6 +26,8 @@ final class DatabaseBrowserSessionViewModel: ObservableObject, Identifiable {
     private let modeController: (any DatabaseSessionModeControlling)?
     private let tableDataService: any DatabaseTableDataService
     private let logger = Logger(subsystem: "com.tableglass", category: "DatabaseBrowser.SessionMode")
+    private let metadataCacheStaleness: TimeInterval = 60 * 5
+    private var metadataLastUpdated: Date?
 
     init(
         id: UUID = UUID(),
@@ -77,6 +80,17 @@ final class DatabaseBrowserSessionViewModel: ObservableObject, Identifiable {
             treeNodes = Self.buildTree(from: schema)
             selectedNodeID = nil
             loadError = nil
+            let timestamp = Date()
+            let indexTask = Task.detached(priority: .userInitiated) { [schema, id, databaseName] in
+                QuickResourceIndex.from(
+                    schema: schema,
+                    sessionID: id,
+                    sessionName: databaseName,
+                    timestamp: timestamp
+                )
+            }
+            quickResourceIndex = await indexTask.value
+            metadataLastUpdated = timestamp
         } catch {
             treeNodes = []
             selectedNodeID = nil
@@ -182,6 +196,95 @@ final class DatabaseBrowserSessionViewModel: ObservableObject, Identifiable {
 
     func makeTableContentViewModel(pageSize: Int = 50) -> DatabaseTableContentViewModel {
         DatabaseTableContentViewModel(tableDataService: tableDataService, pageSize: pageSize)
+    }
+
+    func cachedResourceIndex(maximumAge: TimeInterval? = nil) async -> QuickResourceIndex? {
+        if quickResourceIndex == nil {
+            await refresh()
+        } else if let maximumAge, let last = metadataLastUpdated,
+                  Date().timeIntervalSince(last) > maximumAge {
+            if !isRefreshing {
+                await refreshQuickResourceIndexOnly()
+            }
+        }
+        return quickResourceIndex
+    }
+
+    private func refreshQuickResourceIndexOnly() async {
+        isRefreshing = true
+        defer { isRefreshing = false }
+        do {
+            let schema = try await metadataProvider.metadata(scope: metadataScope)
+            let timestamp = Date()
+            let indexTask = Task.detached(priority: .userInitiated) { [schema, id, databaseName] in
+                QuickResourceIndex.from(
+                    schema: schema,
+                    sessionID: id,
+                    sessionName: databaseName,
+                    timestamp: timestamp
+                )
+            }
+            quickResourceIndex = await indexTask.value
+            metadataLastUpdated = timestamp
+        } catch {
+            // Keep existing index and selection state when metadata fetch fails.
+        }
+    }
+
+    @discardableResult
+    func focusResource(_ resource: QuickResourceItem) async -> Bool {
+        guard resource.sessionID == id else { return false }
+        guard await ensureMetadataLoaded() else { return false }
+
+        guard let catalogNode = treeNodes.first(where: { node in
+            if case .catalog(let name) = node.kind {
+                return name == resource.catalog
+            }
+            return false
+        }) else {
+            return false
+        }
+
+        await expandNodeIfNeeded(catalogNode.id)
+
+        guard let namespaceNode = findNode(
+            with: resource.namespace,
+            in: catalogNode.id,
+            kindMatcher: { kind in
+                if case .namespace(_, let name) = kind {
+                    return name == resource.namespace
+                }
+                return false
+            }
+        ) else {
+            return false
+        }
+
+        await expandNodeIfNeeded(namespaceNode.id)
+
+        guard let objectNode = findNode(
+            with: resource.name,
+            in: namespaceNode.id,
+            kindMatcher: { kind in
+                switch (kind, resource.kind) {
+                case (.table(_, _, let name), .table):
+                    return name == resource.name
+                case (.view(_, _, let name), .view):
+                    return name == resource.name
+                case (.storedProcedure(_, _, let name), .storedProcedure):
+                    return name == resource.name
+                default:
+                    return false
+                }
+            }
+        ) else {
+            return false
+        }
+
+        updateNode(catalogNode.id) { $0.isExpanded = true }
+        updateNode(namespaceNode.id) { $0.isExpanded = true }
+        selectedNodeID = objectNode.id
+        return true
     }
 }
 
@@ -349,6 +452,42 @@ private extension DatabaseBrowserSessionViewModel {
             nodes[index].isExpanded = true
             expand(nodes: &nodes[index].children)
         }
+    }
+}
+
+// MARK: - Quick resource selection helpers
+
+private extension DatabaseBrowserSessionViewModel {
+    func ensureMetadataLoaded() async -> Bool {
+        if treeNodes.isEmpty && !isRefreshing {
+            await refresh()
+        } else if let last = metadataLastUpdated,
+                  Date().timeIntervalSince(last) > metadataCacheStaleness,
+                  !isRefreshing {
+            Task { await self.refresh() }
+        }
+
+        return !treeNodes.isEmpty
+    }
+
+    func expandNodeIfNeeded(_ id: DatabaseObjectTreeNode.ID) async {
+        await loadChildrenIfNeeded(for: id)
+        updateNode(id) { $0.isExpanded = true }
+    }
+
+    func findNode(
+        with title: String,
+        in parentID: DatabaseObjectTreeNode.ID,
+        kindMatcher: (DatabaseObjectTreeNode.Kind) -> Bool
+    ) -> DatabaseObjectTreeNode? {
+        guard let parent = findNode(with: parentID, in: treeNodes) else { return nil }
+        if parent.children.isEmpty, parent.pendingChildren != nil {
+            return nil
+        }
+
+        return parent.children.first(where: { child in
+            child.title == title && kindMatcher(child.kind)
+        })
     }
 }
 

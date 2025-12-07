@@ -7,21 +7,34 @@ import TableGlassKit
 
 struct DatabaseBrowserWindow: View {
     @StateObject private var viewModel: DatabaseBrowserViewModel
+    @StateObject private var quickPaletteViewModel: QuickResourcePaletteViewModel
+#if os(macOS)
+    @State private var hostingWindow: NSWindow?
+    @State private var quickOpenKeyMonitor: Any?
+#endif
     private var isBrowserUITest: Bool {
         ProcessInfo.processInfo.arguments.contains(UITestArguments.databaseBrowser.rawValue)
     }
 
     init(viewModel: DatabaseBrowserViewModel) {
         _viewModel = StateObject(wrappedValue: viewModel)
+        _quickPaletteViewModel = StateObject(wrappedValue: QuickResourcePaletteViewModel(browserViewModel: viewModel))
     }
 
     var body: some View {
-        Group {
+        ZStack {
 #if os(macOS)
             if viewModel.sessions.isEmpty {
                 DatabaseBrowserPlaceholderView()
             } else {
-                DatabaseBrowserTabView(viewModel: viewModel)
+                DatabaseBrowserTabView(
+                    viewModel: viewModel,
+                    onShowQuickOpenPalette: {
+                        Task { @MainActor in
+                            quickPaletteViewModel.present()
+                        }
+                    }
+                )
             }
 #else
             if viewModel.sessions.isEmpty {
@@ -33,6 +46,11 @@ struct DatabaseBrowserWindow: View {
                             session: session,
                             onConfirmAccessMode: { mode in
                                 await viewModel.setAccessMode(mode, for: session.id)
+                            },
+                            onShowQuickOpenPalette: {
+                                Task { @MainActor in
+                                    quickPaletteViewModel.present()
+                                }
                             }
                         )
                         .tag(session.id as DatabaseBrowserSessionViewModel.ID?)
@@ -43,11 +61,37 @@ struct DatabaseBrowserWindow: View {
                 }
                 .tabViewStyle(.automatic)
                 .accessibilityIdentifier(DatabaseBrowserAccessibility.tabGroup.rawValue)
+            }
+#endif
+            quickPaletteOverlay
+        }
+        .animation(.easeInOut(duration: 0.12), value: quickPaletteViewModel.isPresented)
+#if os(macOS)
+        .background(WindowAccessor { window in
+            hostingWindow = window
+            installQuickOpenMonitor(for: window)
+        })
+        .onReceive(NotificationCenter.default.publisher(for: .databaseBrowserQuickOpenRequested)) { notification in
+            guard let hostingWindow,
+                  let senderWindow = notification.object as? NSWindow,
+                  hostingWindow == senderWindow else { return }
+            Task { @MainActor in
+                quickPaletteViewModel.present()
+            }
+        }
+        .onDisappear {
+            removeQuickOpenMonitor()
         }
 #endif
-        }
         .task {
             await viewModel.bootstrap()
+        }
+        .onChange(of: viewModel.sessions.count) { _, _ in
+            if quickPaletteViewModel.isPresented {
+                Task {
+                    await quickPaletteViewModel.refreshIndices()
+                }
+            }
         }
 #if os(macOS)
         .onAppear {
@@ -58,11 +102,44 @@ struct DatabaseBrowserWindow: View {
 #endif
     }
 
+    @ViewBuilder
+    private var quickPaletteOverlay: some View {
+        if quickPaletteViewModel.isPresented {
+            ZStack {
+                Color.black.opacity(0.22)
+                    .ignoresSafeArea()
+                    .onTapGesture {
+                        quickPaletteViewModel.dismiss()
+                    }
+
+                QuickResourcePaletteView(
+                    viewModel: quickPaletteViewModel,
+                    onSelect: { match in
+                        Task {
+                            await viewModel.focus(resource: match.item)
+                        }
+                        quickPaletteViewModel.dismiss()
+                    },
+                    onDismiss: {
+                        quickPaletteViewModel.dismiss()
+                    }
+                )
+                .frame(maxWidth: 780)
+                .padding(.horizontal, 80)
+                .padding(.vertical, 60)
+                .transition(.move(edge: .top).combined(with: .opacity))
+                .zIndex(1)
+            }
+            .transition(.opacity)
+        }
+    }
+
 }
 
 private struct DatabaseBrowserSessionView: View {
     @ObservedObject var session: DatabaseBrowserSessionViewModel
     let onConfirmAccessMode: @Sendable (DatabaseAccessMode) async -> Void
+    let onShowQuickOpenPalette: @MainActor @Sendable () -> Void
 
     @StateObject private var logViewModel: DatabaseSessionLogViewModel
     @StateObject private var tableContentViewModel: DatabaseTableContentViewModel
@@ -79,10 +156,12 @@ private struct DatabaseBrowserSessionView: View {
 
     init(
         session: DatabaseBrowserSessionViewModel,
-        onConfirmAccessMode: @escaping @Sendable (DatabaseAccessMode) async -> Void
+        onConfirmAccessMode: @escaping @Sendable (DatabaseAccessMode) async -> Void,
+        onShowQuickOpenPalette: @escaping @Sendable () -> Void
     ) {
         _session = ObservedObject(initialValue: session)
         self.onConfirmAccessMode = onConfirmAccessMode
+        self.onShowQuickOpenPalette = onShowQuickOpenPalette
         _logViewModel = StateObject(wrappedValue: DatabaseSessionLogViewModel(
             databaseName: session.databaseName,
             log: session.queryLog
@@ -408,6 +487,9 @@ private struct DatabaseBrowserSessionView: View {
             showHistory: {
                 detailDisplayMode = .results
                 queryEditorViewModel.beginHistorySearch()
+            },
+            showQuickOpen: {
+                onShowQuickOpenPalette()
             }
         )
     }
@@ -743,11 +825,42 @@ private struct DatabaseObjectTreeRow: View {
 }
 
 #if os(macOS)
+private extension DatabaseBrowserWindow {
+    func installQuickOpenMonitor(for window: NSWindow?) {
+        removeQuickOpenMonitor()
+        guard let window else { return }
+
+        quickOpenKeyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
+            guard event.window == window else { return event }
+            let isCommandP = event.modifierFlags.contains(.command)
+                && event.charactersIgnoringModifiers?.lowercased() == "p"
+            if isCommandP {
+                Task { @MainActor in
+                    quickPaletteViewModel.present()
+                }
+                return nil
+            }
+            return event
+        }
+    }
+
+    func removeQuickOpenMonitor() {
+        if let quickOpenKeyMonitor {
+            NSEvent.removeMonitor(quickOpenKeyMonitor)
+        }
+        quickOpenKeyMonitor = nil
+    }
+}
+
 private struct DatabaseBrowserTabView: NSViewRepresentable {
     @ObservedObject var viewModel: DatabaseBrowserViewModel
+    let onShowQuickOpenPalette: @MainActor @Sendable () -> Void
 
     func makeCoordinator() -> Coordinator {
-        Coordinator(viewModel: viewModel)
+        Coordinator(
+            viewModel: viewModel,
+            onShowQuickOpenPalette: onShowQuickOpenPalette
+        )
     }
 
     func makeNSView(context: Context) -> NSTabView {
@@ -775,11 +888,16 @@ private struct DatabaseBrowserTabView: NSViewRepresentable {
     @MainActor
     final class Coordinator: NSObject, NSTabViewDelegate {
         private let viewModel: DatabaseBrowserViewModel
+        private let onShowQuickOpenPalette: @MainActor @Sendable () -> Void
         weak var tabView: NSTabView?
         private var items: [DatabaseBrowserSessionViewModel.ID: NSTabViewItem] = [:]
 
-        init(viewModel: DatabaseBrowserViewModel) {
+        init(
+            viewModel: DatabaseBrowserViewModel,
+            onShowQuickOpenPalette: @escaping @Sendable () -> Void
+        ) {
             self.viewModel = viewModel
+            self.onShowQuickOpenPalette = onShowQuickOpenPalette
         }
 
         func updateTabs(
@@ -866,8 +984,27 @@ private struct DatabaseBrowserTabView: NSViewRepresentable {
                 session: session,
                 onConfirmAccessMode: { mode in
                     await self.viewModel.setAccessMode(mode, for: session.id)
-                }
+                },
+                onShowQuickOpenPalette: onShowQuickOpenPalette
             )
+        }
+    }
+}
+
+private struct WindowAccessor: NSViewRepresentable {
+    let onResolve: (NSWindow?) -> Void
+
+    func makeNSView(context: Context) -> NSView {
+        let view = NSView()
+        DispatchQueue.main.async { [weak view] in
+            onResolve(view?.window)
+        }
+        return view
+    }
+
+    func updateNSView(_ nsView: NSView, context: Context) {
+        DispatchQueue.main.async { [weak nsView] in
+            onResolve(nsView?.window)
         }
     }
 }

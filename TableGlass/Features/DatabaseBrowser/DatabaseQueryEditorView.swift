@@ -173,10 +173,13 @@ private struct HistorySearchOverlay: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack(spacing: 8) {
-                TextField("Search history", text: $viewModel.historySearchQuery)
-                    .textFieldStyle(.roundedBorder)
-                    .focused($isSearchFieldFocused)
-                    .onSubmit(handleAccept)
+                DatabaseSearchTextField(
+                    prompt: "Search history",
+                    text: $viewModel.historySearchQuery,
+                    onSubmit: handleAccept,
+                    autoFocus: true,
+                    focusBinding: $isSearchFieldFocused
+                )
 
                 Button(action: handleAccept) {
                     Label("Use", systemImage: "arrow.down.doc")
@@ -212,7 +215,6 @@ private struct HistorySearchOverlay: View {
         .clipShape(RoundedRectangle(cornerRadius: 8))
         .shadow(radius: 2)
         .onAppear {
-            isSearchFieldFocused = true
             startMonitoringKeys()
         }
         .onDisappear {
@@ -258,6 +260,35 @@ private struct HistorySearchOverlay: View {
         }
         keyMonitor = nil
         #endif
+    }
+}
+
+struct DatabaseSearchTextField: View {
+    let prompt: String
+    @Binding var text: String
+    var onSubmit: (() -> Void)? = nil
+    var autoFocus: Bool = false
+    var focusBinding: FocusState<Bool>.Binding? = nil
+
+    @FocusState private var isFocused: Bool
+
+    private var effectiveFocus: FocusState<Bool>.Binding {
+        focusBinding ?? $isFocused
+    }
+
+    var body: some View {
+        TextField(prompt, text: $text)
+            .textFieldStyle(.roundedBorder)
+            .focused(effectiveFocus)
+            .submitLabel(.search)
+            .onAppear {
+                if autoFocus {
+                    effectiveFocus.wrappedValue = true
+                }
+            }
+            .onSubmit {
+                onSubmit?()
+            }
     }
 }
 

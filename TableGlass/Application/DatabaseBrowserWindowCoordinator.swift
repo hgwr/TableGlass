@@ -35,6 +35,7 @@ final class DatabaseBrowserWindowCoordinator: NSObject {
         }
         let windowController = NSWindowController(window: window)
         windowController.showWindow(nil)
+        window.makeKeyAndOrderFront(nil)
         if ProcessInfo.processInfo.arguments.contains(UITestArguments.databaseBrowser.rawValue) {
             NSApp.activate(ignoringOtherApps: true)
             window.makeKeyAndOrderFront(nil)
