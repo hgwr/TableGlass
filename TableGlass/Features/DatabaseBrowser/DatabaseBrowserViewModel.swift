@@ -196,6 +196,22 @@ final class DatabaseBrowserViewModel: ObservableObject {
         "Database Browser"
     }
 
+    func quickResourceIndices(maximumAge: TimeInterval = 60 * 3) async -> [QuickResourceIndex] {
+        var indices: [QuickResourceIndex] = []
+        for session in sessions {
+            if let index = await session.cachedResourceIndex(maximumAge: maximumAge) {
+                indices.append(index)
+            }
+        }
+        return indices
+    }
+
+    func focus(resource: QuickResourceItem) async {
+        guard let session = sessions.first(where: { $0.id == resource.sessionID }) else { return }
+        selectedSessionID = session.id
+        await session.focusResource(resource)
+    }
+
 }
 
 private extension DatabaseAccessMode {

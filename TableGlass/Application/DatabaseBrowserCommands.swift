@@ -3,6 +3,7 @@ import SwiftUI
 struct DatabaseBrowserCommandActions {
     let runQuery: @MainActor @Sendable () -> Void
     let showHistory: @MainActor @Sendable () -> Void
+    let showQuickOpen: @MainActor @Sendable () -> Void
 }
 
 private struct DatabaseBrowserCommandActionsKey: FocusedValueKey {
@@ -35,6 +36,12 @@ struct DatabaseBrowserCommands: Commands {
             .disabled(commandActions == nil)
 
             Divider()
+
+            Button("Quick Open Resource") {
+                commandActions?.showQuickOpen()
+            }
+            .keyboardShortcut("P", modifiers: [.command])
+            .disabled(commandActions == nil)
 
             Button("Open Connection Window") {
                 openWindow(id: SceneID.connectionManagement.rawValue)
