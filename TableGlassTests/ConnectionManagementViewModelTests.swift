@@ -91,6 +91,26 @@ struct ConnectionManagementViewModelTests {
         #expect(viewModel.connections.isEmpty)
     }
 
+    @Test func nonNumericPortBlocksSaving() async throws {
+        let store = MockConnectionStore(connections: [])
+        let viewModel = makeViewModel(store: store)
+
+        viewModel.startCreatingConnection(kind: .postgreSQL)
+        viewModel.updateDraft {
+            $0.name = "Bad Port"
+            $0.host = "localhost"
+            $0.username = "postgres"
+        }
+
+        viewModel.updatePortInput("54a32")
+
+        let saved = await viewModel.saveCurrentConnection()
+
+        #expect(saved == nil)
+        #expect(viewModel.portValidationMessage == "Port must be a number.")
+        #expect(!viewModel.isDraftValid)
+    }
+
     @Test func startCreatingConnectionResetsDraft() async throws {
         let profiles = [
             ConnectionProfile(

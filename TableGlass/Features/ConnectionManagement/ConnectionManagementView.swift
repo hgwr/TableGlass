@@ -83,13 +83,19 @@ struct ConnectionManagementView: View {
     private var detailContent: some View {
         Group {
             if viewModel.isNewConnection || viewModel.selection != nil {
-                ScrollViewReader { proxy in
-                    ScrollView(.vertical) {
-                        connectionDetail(scrollProxy: proxy)
-                            .frame(maxWidth: 520)
-                            .padding(.vertical, 24)
-                            .padding(.horizontal, 32)
+                VStack(spacing: 0) {
+                    ScrollViewReader { proxy in
+                        ScrollView(.vertical) {
+                            connectionDetail(scrollProxy: proxy)
+                                .frame(maxWidth: 520)
+                                .padding(.vertical, 24)
+                                .padding(.horizontal, 32)
+                                .frame(maxWidth: .infinity, alignment: .top)
+                        }
+                        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
                     }
+
+                    actionArea
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
                 .accessibilityElement(children: .contain)
@@ -128,16 +134,22 @@ struct ConnectionManagementView: View {
                 .focused($focusedField, equals: .host)
                     .accessibilityIdentifier("Host")
                 highlightedField(.port) {
-                    Stepper(value: draftBinding(\.port), in: 0...65_535) {
-                        HStack {
-                            Text("Port")
-                            Spacer()
-                            Text("\(viewModel.draft.port)")
+                    VStack(alignment: .leading, spacing: 4) {
+                        TextField(
+                            "Port",
+                            text: portBinding,
+                            prompt: Text("\(ConnectionProfile.defaultPort(for: viewModel.draft.kind))")
+                        )
+                            .focused($focusedField, equals: .port)
+                            .accessibilityIdentifier("Port")
+                        if let message = viewModel.portValidationMessage {
+                            Text(message)
+                                .font(.footnote)
+                                .foregroundStyle(.red)
                         }
                     }
                 }
                 .id(ConnectionDraft.MissingField.port)
-                .focused($focusedField, equals: .port)
             }
 
             Section(header: Text("Credentials")) {
@@ -179,8 +191,6 @@ struct ConnectionManagementView: View {
                 }
             }
 
-            footerButtons
-            errorCallout
         }
         .formStyle(.grouped)
         .scrollContentBackground(.hidden)
@@ -393,6 +403,18 @@ struct ConnectionManagementView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
+    private var actionArea: some View {
+        VStack(spacing: 12) {
+            Divider()
+            errorCallout
+            footerButtons
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.horizontal, 24)
+        .padding(.vertical, 12)
+        .background(.regularMaterial)
+    }
+
     private var footerButtons: some View {
         HStack {
             Button(role: .destructive) {
@@ -412,7 +434,12 @@ struct ConnectionManagementView: View {
                 Label("Save Draft", systemImage: "doc.badge.clock")
             }
             .help("Store this connection without completing validation.")
-            .disabled(!viewModel.draft.hasAnyContent || viewModel.isSaving || isConnecting)
+            .disabled(
+                !viewModel.draft.hasAnyContent
+                    || viewModel.portValidationMessage != nil
+                    || viewModel.isSaving
+                    || isConnecting
+            )
 
             Button {
                 Task {
@@ -424,7 +451,7 @@ struct ConnectionManagementView: View {
                     systemImage: "tray.and.arrow.down")
             }
             .accessibilityIdentifier("connectionManagement.saveButton")
-            .disabled(!viewModel.draft.isValid || viewModel.isSaving || isConnecting)
+            .disabled(!viewModel.isDraftValid || viewModel.isSaving || isConnecting)
 
             Button {
                 let isUITest = ProcessInfo.processInfo.isRunningUITests
@@ -443,7 +470,7 @@ struct ConnectionManagementView: View {
             .keyboardShortcut(.defaultAction)
             .buttonStyle(.borderedProminent)
             .disabled(
-                !viewModel.draft.isValid
+                !viewModel.isDraftValid
                     || viewModel.draft.isDraft
                     || viewModel.isSaving
                     || isConnecting
@@ -516,7 +543,7 @@ struct ConnectionManagementView: View {
     }
 
     private var missingFieldSummary: String? {
-        let labels = viewModel.draft.missingRequiredFields.map(\.label)
+        let labels = viewModel.missingRequiredFields.map(\.label)
         guard !labels.isEmpty else { return nil }
         return "Missing: " + labels.joined(separator: ", ")
     }
@@ -524,11 +551,11 @@ struct ConnectionManagementView: View {
     private func draftBanner(scrollProxy: ScrollViewProxy) -> some View {
         HStack(alignment: .firstTextBaseline, spacing: 10) {
             Image(
-                systemName: viewModel.draft.isValid
+                systemName: viewModel.isDraftValid
                     ? "doc.badge.clock.fill"
                     : "exclamationmark.triangle.fill"
             )
-            .foregroundStyle(viewModel.draft.isValid ? Color.accentColor : Color.orange)
+            .foregroundStyle(viewModel.isDraftValid ? Color.accentColor : Color.orange)
 
             VStack(alignment: .leading, spacing: 4) {
                 Text("Draft in progress")
@@ -546,7 +573,7 @@ struct ConnectionManagementView: View {
 
             Spacer()
 
-            if let missing = viewModel.draft.nextMissingField {
+            if let missing = viewModel.nextMissingField {
                 Button {
                     jump(to: missing, using: scrollProxy)
                 } label: {
@@ -600,7 +627,7 @@ struct ConnectionManagementView: View {
         @ViewBuilder content: () -> Content
     ) -> some View {
         let shouldHighlight = viewModel.draft.hasAnyContent || !viewModel.isNewConnection
-        let isMissing = shouldHighlight && viewModel.draft.missingRequiredFields.contains(missingField)
+        let isMissing = shouldHighlight && viewModel.missingRequiredFields.contains(missingField)
         content()
             .padding(.vertical, isMissing ? 4 : 0)
             .background(
@@ -615,6 +642,13 @@ struct ConnectionManagementView: View {
         Binding(
             get: { viewModel.draft[keyPath: keyPath] },
             set: { newValue in viewModel.updateDraft { $0[keyPath: keyPath] = newValue } }
+        )
+    }
+
+    private var portBinding: Binding<String> {
+        Binding(
+            get: { viewModel.portInput },
+            set: { newValue in viewModel.updatePortInput(newValue) }
         )
     }
 

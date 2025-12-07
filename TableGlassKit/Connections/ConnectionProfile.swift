@@ -1,4 +1,5 @@
 import Foundation
+import OSLog
 
 public struct ConnectionProfile: Identifiable, Hashable, Sendable, Codable {
     public enum DatabaseKind: String, CaseIterable, Sendable, Codable {
@@ -18,6 +19,8 @@ public struct ConnectionProfile: Identifiable, Hashable, Sendable, Codable {
         case passwordKeychainIdentifier
         case isDraft
     }
+
+    private static let logger = Logger(subsystem: "com.tableglass", category: "ConnectionProfile")
 
     public struct SSHConfiguration: Hashable, Sendable, Codable {
         public enum AuthenticationMethod: String, CaseIterable, Sendable, Codable {
@@ -97,7 +100,7 @@ public struct ConnectionProfile: Identifiable, Hashable, Sendable, Codable {
         name = try container.decode(String.self, forKey: .name)
         kind = try container.decode(DatabaseKind.self, forKey: .kind)
         host = try container.decode(String.self, forKey: .host)
-        port = try container.decode(Int.self, forKey: .port)
+        port = try Self.decodePort(from: container, kind: kind, profileName: name)
         username = try container.decode(String.self, forKey: .username)
         database = try container.decodeIfPresent(String.self, forKey: .database)
         sshConfiguration = try container.decode(SSHConfiguration.self, forKey: .sshConfiguration)
@@ -120,5 +123,76 @@ public struct ConnectionProfile: Identifiable, Hashable, Sendable, Codable {
         try container.encode(sshConfiguration, forKey: .sshConfiguration)
         try container.encodeIfPresent(passwordKeychainIdentifier, forKey: .passwordKeychainIdentifier)
         try container.encode(isDraft, forKey: .isDraft)
+    }
+
+    public static func defaultPort(for kind: DatabaseKind) -> Int {
+        switch kind {
+        case .postgreSQL:
+            return 5432
+        case .mySQL:
+            return 3306
+        case .sqlite:
+            return 0
+        }
+    }
+
+    private static func decodePort(
+        from container: KeyedDecodingContainer<CodingKeys>,
+        kind: DatabaseKind,
+        profileName: String
+    ) throws -> Int {
+        if let intPort = try? container.decode(Int.self, forKey: .port) {
+            return intPort
+        }
+
+        if let rawString = try? container.decode(String.self, forKey: .port) {
+            let parsed = parsePortList(from: rawString)
+            if let first = parsed.first {
+                logDiscardedPortsIfNeeded(parsed, source: rawString, profileName: profileName)
+                return first
+            }
+        }
+
+        if let array = try? container.decode([Int].self, forKey: .port), let first = array.first {
+            logDiscardedPortsIfNeeded(
+                array,
+                source: array.map(String.init).joined(separator: ","),
+                profileName: profileName
+            )
+            return first
+        }
+
+        if let stringArray = try? container.decode([String].self, forKey: .port) {
+            let parsed = stringArray.compactMap { Int($0.trimmingCharacters(in: .whitespacesAndNewlines)) }
+            if let first = parsed.first {
+                logDiscardedPortsIfNeeded(
+                    parsed,
+                    source: stringArray.joined(separator: ","),
+                    profileName: profileName
+                )
+                return first
+            }
+        }
+
+        logger.error("Failed to decode port for profile \(profileName, privacy: .private). Falling back to default.")
+        return defaultPort(for: kind)
+    }
+
+    private static func parsePortList(from string: String) -> [Int] {
+        string
+            .split { $0 == "," || $0.isWhitespace }
+            .compactMap { Int($0.trimmingCharacters(in: .whitespacesAndNewlines)) }
+    }
+
+    private static func logDiscardedPortsIfNeeded(
+        _ ports: [Int],
+        source: String,
+        profileName: String
+    ) {
+        guard ports.count > 1 else { return }
+        let discarded = ports.dropFirst()
+        logger.notice(
+            "Multiple ports provided for profile \(profileName, privacy: .private): \(source, privacy: .public). Using \(ports.first ?? 0, privacy: .public) and discarding \(Array(discarded), privacy: .public)."
+        )
     }
 }

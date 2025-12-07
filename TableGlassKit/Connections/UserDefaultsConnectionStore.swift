@@ -16,7 +16,17 @@ public actor UserDefaultsConnectionStore: ConnectionStore {
             return []
         }
         do {
-            return try JSONDecoder().decode([ConnectionProfile].self, from: data)
+            let connections = try JSONDecoder().decode([ConnectionProfile].self, from: data)
+            do {
+                let normalized = try JSONEncoder().encode(connections)
+                if normalized != data {
+                    defaults.set(normalized, forKey: storageKey)
+                    logger.notice("Normalized connection payload for storageKey \(self.storageKey, privacy: .public).")
+                }
+            } catch {
+                logger.error("Failed to normalize migrated connections: \(error.localizedDescription, privacy: .public)")
+            }
+            return connections
         } catch {
             logger.error("Failed to decode saved connections: \(error.localizedDescription, privacy: .public)")
             defaults.removeObject(forKey: storageKey)
