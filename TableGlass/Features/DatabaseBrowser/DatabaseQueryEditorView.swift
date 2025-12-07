@@ -9,35 +9,39 @@ struct DatabaseQueryEditorView: View {
     let isReadOnly: Bool
     let showsResultsInline: Bool
     let onExecute: (() -> Void)?
+    let placeholderText: String
     @FocusState private var isEditorFocused: Bool
 
     init(
         viewModel: DatabaseQueryEditorViewModel,
         isReadOnly: Bool,
         showsResultsInline: Bool = true,
-        onExecute: (() -> Void)? = nil
+        onExecute: (() -> Void)? = nil,
+        placeholderText: String = "Results will appear here after you run a query."
     ) {
         self.viewModel = viewModel
         self.isReadOnly = isReadOnly
         self.showsResultsInline = showsResultsInline
         self.onExecute = onExecute
+        self.placeholderText = placeholderText
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: 10) {
             header
             editor
             if showsResultsInline {
                 DatabaseQueryResultSection(
                     viewModel: viewModel,
                     isReadOnly: isReadOnly,
-                    onExecute: onExecute
+                    onExecute: onExecute,
+                    placeholderText: placeholderText
                 )
             }
         }
-        .padding(12)
-        .background(.thinMaterial)
-        .clipShape(RoundedRectangle(cornerRadius: 10))
+        .padding(16)
+        .background(.regularMaterial)
+        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
         .overlay(alignment: .topLeading) {
             keyboardShortcuts
         }
@@ -53,8 +57,9 @@ struct DatabaseQueryEditorView: View {
 
     private var header: some View {
         HStack(spacing: 12) {
-            Label("SQL", systemImage: "chevron.left.forwardslash.chevron.right")
+            Text("</> SQL")
                 .font(.headline)
+                .fontWeight(.semibold)
             Spacer()
             if viewModel.isExecuting {
                 ProgressView()
@@ -72,6 +77,7 @@ struct DatabaseQueryEditorView: View {
             Label("Run", systemImage: "play.fill")
         }
         .buttonStyle(.borderedProminent)
+        .buttonBorderShape(.roundedRectangle)
         .disabled(!canExecute)
         .help(isReadOnly && !viewModel.allowsReadOnlyExecution() ? "Read-only mode blocks this statement" : "Execute SQL")
         .accessibilityIdentifier(DatabaseBrowserAccessibility.queryRunButton.rawValue)
@@ -342,6 +348,19 @@ struct DatabaseQueryResultSection: View {
     @ObservedObject var viewModel: DatabaseQueryEditorViewModel
     let isReadOnly: Bool
     let onExecute: (() -> Void)?
+    let placeholderText: String
+
+    init(
+        viewModel: DatabaseQueryEditorViewModel,
+        isReadOnly: Bool,
+        onExecute: (() -> Void)?,
+        placeholderText: String = "Results will appear here after you run a query."
+    ) {
+        self.viewModel = viewModel
+        self.isReadOnly = isReadOnly
+        self.onExecute = onExecute
+        self.placeholderText = placeholderText
+    }
 
     var body: some View {
         if let error = viewModel.errorMessage {
@@ -368,7 +387,7 @@ struct DatabaseQueryResultSection: View {
                 executionDuration: viewModel.lastExecutionDuration
             )
         } else {
-            Text("Results will appear here after you run a query.")
+            Text(placeholderText)
                 .foregroundStyle(.secondary)
                 .font(.callout)
         }

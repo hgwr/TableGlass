@@ -5,6 +5,12 @@ import XCTest
 
 final class PostgresNIOIntegrationTests: XCTestCase {
     func testCrudAndMetadataRoundTrip() async throws {
+        let env = ProcessInfo.processInfo.environment
+        let isCI = env["CI"] != nil || env["XCODE_CLOUD"] != nil || env["XCS"] != nil || env["XCS_BOT_ID"] != nil
+        if isCI {
+            throw XCTSkip("Local Postgres integration test is skipped on CI runners.")
+        }
+
         guard let configuration = LocalPostgresConfiguration.load() else {
             throw XCTSkip("Local PostgreSQL credentials are not configured.")
         }
