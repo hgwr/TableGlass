@@ -202,8 +202,11 @@ final class DatabaseBrowserSessionViewModel: ObservableObject, Identifiable {
         if quickResourceIndex == nil {
             await refresh()
         } else if let maximumAge, let last = metadataLastUpdated,
-                  Date().timeIntervalSince(last) > maximumAge, !isRefreshing {
-            Task { await self.refresh() }
+                  Date().timeIntervalSince(last) > maximumAge {
+            if isRefreshing {
+                return quickResourceIndex
+            }
+            await refresh()
         }
         return quickResourceIndex
     }

@@ -11,6 +11,10 @@
 		175FDDA02ED267D40049B9DB /* TableGlassKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 17DE3D1F2EC012860034C244 /* TableGlassKit.framework */; };
 		175FDDA32ED2685B0049B9DB /* TableGlassKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 17DE3D1F2EC012860034C244 /* TableGlassKit.framework */; };
 		175FDDA42ED2685B0049B9DB /* TableGlassKit.framework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = 17DE3D1F2EC012860034C244 /* TableGlassKit.framework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
+		7EBCB6102F0D4F6A00A1A001 /* QuickResourcePaletteModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7EBCB6002F0D4F6A00A1A001 /* QuickResourcePaletteModels.swift */; };
+		7EBCB6112F0D4F6A00A1A001 /* QuickResourcePaletteViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7EBCB6012F0D4F6A00A1A001 /* QuickResourcePaletteViewModel.swift */; };
+		7EBCB6122F0D4F6A00A1A001 /* QuickResourcePaletteView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7EBCB6022F0D4F6A00A1A001 /* QuickResourcePaletteView.swift */; };
+		7EBCB6132F0D4F6A00A1A001 /* QuickResourceMatcherTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7EBCB6032F0D4F6A00A1A001 /* QuickResourceMatcherTests.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -63,6 +67,10 @@
 		17DE3CCC2EC012860034C244 /* TableGlassTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = TableGlassTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		17DE3CD62EC012860034C244 /* TableGlassUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = TableGlassUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		17DE3D1F2EC012860034C244 /* TableGlassKit.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = TableGlassKit.framework; sourceTree = BUILT_PRODUCTS_DIR; };
+		7EBCB6002F0D4F6A00A1A001 /* QuickResourcePaletteModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TableGlass/Features/DatabaseBrowser/QuickResourcePaletteModels.swift; sourceTree = SOURCE_ROOT; };
+		7EBCB6012F0D4F6A00A1A001 /* QuickResourcePaletteViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TableGlass/Features/DatabaseBrowser/QuickResourcePaletteViewModel.swift; sourceTree = SOURCE_ROOT; };
+		7EBCB6022F0D4F6A00A1A001 /* QuickResourcePaletteView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TableGlass/Features/DatabaseBrowser/QuickResourcePaletteView.swift; sourceTree = SOURCE_ROOT; };
+		7EBCB6032F0D4F6A00A1A001 /* QuickResourceMatcherTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TableGlassTests/QuickResourceMatcherTests.swift; sourceTree = SOURCE_ROOT; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
@@ -337,6 +345,9 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				7EBCB6102F0D4F6A00A1A001 /* QuickResourcePaletteModels.swift in Sources */,
+				7EBCB6112F0D4F6A00A1A001 /* QuickResourcePaletteViewModel.swift in Sources */,
+				7EBCB6122F0D4F6A00A1A001 /* QuickResourcePaletteView.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -344,6 +355,7 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				7EBCB6132F0D4F6A00A1A001 /* QuickResourceMatcherTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
