@@ -203,12 +203,32 @@ final class DatabaseBrowserSessionViewModel: ObservableObject, Identifiable {
             await refresh()
         } else if let maximumAge, let last = metadataLastUpdated,
                   Date().timeIntervalSince(last) > maximumAge {
-            if isRefreshing {
-                return quickResourceIndex
+            if !isRefreshing {
+                await refreshQuickResourceIndexOnly()
             }
-            await refresh()
         }
         return quickResourceIndex
+    }
+
+    private func refreshQuickResourceIndexOnly() async {
+        isRefreshing = true
+        defer { isRefreshing = false }
+        do {
+            let schema = try await metadataProvider.metadata(scope: metadataScope)
+            let timestamp = Date()
+            let indexTask = Task.detached(priority: .userInitiated) { [schema, id, databaseName] in
+                QuickResourceIndex.from(
+                    schema: schema,
+                    sessionID: id,
+                    sessionName: databaseName,
+                    timestamp: timestamp
+                )
+            }
+            quickResourceIndex = await indexTask.value
+            metadataLastUpdated = timestamp
+        } catch {
+            // Keep existing index and selection state when metadata fetch fails.
+        }
     }
 
     @discardableResult
