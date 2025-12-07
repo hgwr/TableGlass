@@ -73,6 +73,7 @@ private struct DatabaseBrowserSessionView: View {
     @State private var requestedAccessMode: DatabaseAccessMode?
     @State private var toggleState: Bool
     @State private var detailDisplayMode: DetailDisplayMode = .results
+    @State private var editorHeightRatio: CGFloat = 0.55
     private let logger = Logger(subsystem: "com.tableglass", category: "DatabaseBrowser.SessionView")
     private let defaultSelectLimit = 50
 
@@ -245,13 +246,18 @@ private struct DatabaseBrowserSessionView: View {
     }
 
     private var detailView: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            queryEditorSection
-            resultsCard
+        GeometryReader { proxy in
+            VStack(spacing: 0) {
+                queryEditorSection
+                    .frame(height: max(180, proxy.size.height * editorHeightRatio))
+                dragHandle(totalHeight: proxy.size.height)
+                resultsCard
+                    .frame(maxHeight: .infinity, alignment: .top)
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+            .padding(16)
+            .background(detailBackgroundColor)
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-        .padding(16)
-        .background(detailBackgroundColor)
     }
 
     private var detailBackgroundColor: Color {
@@ -341,6 +347,31 @@ private struct DatabaseBrowserSessionView: View {
                     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
             }
         }
+    }
+
+    @ViewBuilder
+    private func dragHandle(totalHeight: CGFloat) -> some View {
+        let minimumHeight: CGFloat = 150
+        let maximumHeight: CGFloat = max(minimumHeight, totalHeight - minimumHeight)
+
+        Rectangle()
+            .foregroundStyle(.clear)
+            .frame(height: 10)
+            .overlay {
+                Capsule()
+                    .fill(Color.secondary.opacity(0.35))
+                    .frame(width: 80, height: 4)
+            }
+            .contentShape(Rectangle())
+            .gesture(
+                DragGesture(minimumDistance: 2)
+                    .onChanged { value in
+                        let proposed = (totalHeight * editorHeightRatio) + value.translation.height
+                        let clamped = min(max(proposed, minimumHeight), maximumHeight)
+                        editorHeightRatio = clamped / totalHeight
+                    }
+            )
+            .padding(.vertical, 8)
     }
 
     private var selectedTableIdentifier: DatabaseTableIdentifier? {
