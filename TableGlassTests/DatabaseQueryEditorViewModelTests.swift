@@ -222,6 +222,57 @@ struct DatabaseQueryEditorViewModelTests {
     }
 
     @Test
+    func expandedRowDetailUsesCachedResults() async throws {
+        let executor = MockDatabaseQueryExecutor(
+            routes: [
+                .sqlEquals(
+                    "SELECT * FROM artists",
+                    response: .result(DatabaseQueryResult(rows: [
+                        DatabaseQueryRow(values: ["id": .int(1), "name": .string("Alice")]),
+                        DatabaseQueryRow(values: ["id": .int(2), "name": .string("Bob")]),
+                    ]))
+                )
+            ]
+        )
+        let viewModel = DatabaseQueryEditorViewModel(executor: executor.execute)
+        viewModel.sqlText = "SELECT * FROM artists"
+
+        await viewModel.execute(isReadOnly: false)
+        viewModel.presentRowDetail(forRowAt: 1)
+        viewModel.focusRowDetailField("name")
+
+        #expect(viewModel.rowDetailSelection?.rowIndex == 1)
+        let fields = viewModel.detailFields(for: RowDetailSelection(rowIndex: 1, focusedColumn: "name"))
+        #expect(fields.first(where: { $0.name == "name" })?.value == "Bob")
+    }
+
+    @Test
+    func expandedRowDetailPerformanceIsUnderBudget() async throws {
+        let columns = (0..<100).map { "col\($0)" }
+        let rows = (0..<500).map { rowIndex -> DatabaseQueryRow in
+            let values = Dictionary(uniqueKeysWithValues: columns.map { column in
+                (column, DatabaseQueryValue.string("\(column)-\(rowIndex)"))
+            })
+            return DatabaseQueryRow(values: values)
+        }
+        let result = DatabaseQueryResult(rows: rows)
+        let executor = MockDatabaseQueryExecutor(defaultResponse: .result(result))
+
+        let viewModel = DatabaseQueryEditorViewModel(executor: executor.execute)
+        viewModel.sqlText = "SELECT * FROM synthetic"
+        await viewModel.execute(isReadOnly: false)
+        viewModel.presentRowDetail(forRowAt: 250)
+
+        let clock = ContinuousClock()
+        let start = clock.now
+        let fields = viewModel.detailFields(for: RowDetailSelection(rowIndex: 250, focusedColumn: nil))
+        let elapsed = start.duration(to: clock.now)
+
+        #expect(fields.count == columns.count)
+        #expect(elapsed < .milliseconds(100))
+    }
+
+    @Test
     func historyPersistenceMergesAcrossSessions() async throws {
         let store = InMemoryHistoryStore()
         let historyA = DatabaseQueryHistory(capacity: 10, persistence: store)

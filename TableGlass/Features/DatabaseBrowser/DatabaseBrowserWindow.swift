@@ -1032,6 +1032,11 @@ enum DatabaseBrowserAccessibility: String {
     case queryRunButton = "databaseBrowser.query.runButton"
     case queryResultGrid = "databaseBrowser.query.resultGrid"
     case queryErrorMessage = "databaseBrowser.query.error"
+    case rowDetailToggle = "databaseBrowser.rowDetail.toggle"
+    case rowDetailPanel = "databaseBrowser.rowDetail.panel"
+    case rowDetailCopyButton = "databaseBrowser.rowDetail.copy"
+    case rowDetailCopyField = "databaseBrowser.rowDetail.copyField"
+    case rowDetailClose = "databaseBrowser.rowDetail.close"
 
     static func sidebarRow(for name: String) -> String {
         "databaseBrowser.sidebar.\(name)"

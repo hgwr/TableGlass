@@ -1,6 +1,37 @@
 import Combine
 import Foundation
+#if os(macOS)
+import AppKit
+#else
+import UIKit
+#endif
 import TableGlassKit
+
+struct RowDetailSelection: Equatable {
+    var rowIndex: Int
+    var focusedColumn: String?
+}
+
+enum RowCopyFormat: String, CaseIterable {
+    case tsv
+    case json
+
+    var title: String {
+        switch self {
+        case .tsv:
+            return "TSV"
+        case .json:
+            return "JSON"
+        }
+    }
+}
+
+struct RowDetailField: Identifiable, Equatable {
+    let name: String
+    let value: String
+
+    var id: String { name }
+}
 
 @MainActor
 final class DatabaseQueryEditorViewModel: ObservableObject {
@@ -22,6 +53,10 @@ final class DatabaseQueryEditorViewModel: ObservableObject {
     @Published private(set) var historySearchResults: [String] = []
     @Published private(set) var historySearchPreview: String?
     @Published private(set) var lastExecutionDuration: Duration?
+    @Published private(set) var resultColumns: [String] = []
+    @Published var isRowDetailPresented: Bool = false
+    @Published private(set) var rowDetailSelection: RowDetailSelection?
+    @Published var rowDetailCopyFormat: RowCopyFormat = .tsv
 
     private let executor: @Sendable (DatabaseQueryRequest) async throws -> DatabaseQueryResult
     private let history: DatabaseQueryHistory
@@ -79,9 +114,9 @@ final class DatabaseQueryEditorViewModel: ObservableObject {
             let start = clock.now
             let queryResult = try await executor(request)
             lastExecutionDuration = start.duration(to: clock.now)
-            result = queryResult
+            applyResult(queryResult)
         } catch {
-            result = nil
+            clearResultState()
             lastExecutionDuration = nil
             errorMessage = error.localizedDescription
         }
@@ -95,6 +130,167 @@ final class DatabaseQueryEditorViewModel: ObservableObject {
             queuedExecutionReadOnly = nil
             await execute(isReadOnly: readOnly)
         }
+    }
+
+    // MARK: - Row detail
+
+    func presentRowDetail(forRowAt index: Int) {
+        guard let result, result.rows.indices.contains(index) else { return }
+        let focused = validatedColumn(rowDetailSelection?.focusedColumn)
+        rowDetailSelection = RowDetailSelection(rowIndex: index, focusedColumn: focused)
+        isRowDetailPresented = true
+    }
+
+    func selectRowForDetail(_ index: Int) {
+        guard let result, result.rows.indices.contains(index) else { return }
+        let focused = validatedColumn(rowDetailSelection?.focusedColumn)
+        rowDetailSelection = RowDetailSelection(rowIndex: index, focusedColumn: focused)
+    }
+
+    func toggleRowDetail(forRowAt index: Int? = nil) {
+        guard let result, !result.rows.isEmpty else { return }
+        guard !isRowDetailPresented else {
+            isRowDetailPresented = false
+            return
+        }
+
+        if let index {
+            presentRowDetail(forRowAt: index)
+        } else if let selection = rowDetailSelection {
+            presentRowDetail(forRowAt: selection.rowIndex)
+        } else {
+            presentRowDetail(forRowAt: 0)
+        }
+    }
+
+    func focusRowDetailField(_ column: String?) {
+        guard let selection = rowDetailSelection else { return }
+        let columnName = validatedColumn(column) ?? selection.focusedColumn
+        rowDetailSelection = RowDetailSelection(rowIndex: selection.rowIndex, focusedColumn: columnName)
+    }
+
+    func detailFields(for selection: RowDetailSelection) -> [RowDetailField] {
+        guard let result, result.rows.indices.contains(selection.rowIndex) else { return [] }
+        let row = result.rows[selection.rowIndex]
+        return resultColumns.map { column in
+            let value = DatabaseTableContentViewModel.displayText(from: row.values[column])
+            return RowDetailField(name: column, value: value)
+        }
+    }
+
+    func copyCurrentDetailSelectionToClipboard() {
+        guard isRowDetailPresented, let selection = rowDetailSelection else { return }
+        if let column = selection.focusedColumn {
+            copyField(column, inRow: selection.rowIndex)
+            return
+        }
+        copyRow(at: selection.rowIndex, format: rowDetailCopyFormat)
+    }
+
+    func copyField(_ column: String, inRow rowIndex: Int? = nil) {
+        guard let index = rowIndex ?? rowDetailSelection?.rowIndex else { return }
+        guard let payload = fieldString(column, rowIndex: index) else { return }
+        writeToClipboard(payload)
+    }
+
+    func copyRow(at rowIndex: Int, format: RowCopyFormat) {
+        guard let payload = rowString(forRowAt: rowIndex, format: format) else { return }
+        writeToClipboard(payload)
+    }
+
+    func rowString(forRowAt rowIndex: Int, format: RowCopyFormat) -> String? {
+        guard let result, result.rows.indices.contains(rowIndex) else { return nil }
+        let row = result.rows[rowIndex]
+        switch format {
+        case .tsv:
+            let values = resultColumns.map { column in
+                DatabaseTableContentViewModel.displayText(from: row.values[column])
+            }
+            return values.joined(separator: "\t")
+        case .json:
+            let object = Dictionary(uniqueKeysWithValues: resultColumns.map { column in
+                (column, jsonValue(from: row.values[column]))
+            })
+            guard JSONSerialization.isValidJSONObject(object) else { return nil }
+            let data = try? JSONSerialization.data(withJSONObject: object, options: [.sortedKeys])
+            return data.flatMap { String(data: $0, encoding: .utf8) }
+        }
+    }
+
+    func fieldString(_ column: String, rowIndex: Int) -> String? {
+        guard let result, result.rows.indices.contains(rowIndex) else { return nil }
+        guard resultColumns.contains(column) else { return nil }
+        let row = result.rows[rowIndex]
+        return DatabaseTableContentViewModel.displayText(from: row.values[column])
+    }
+
+    private func applyResult(_ queryResult: DatabaseQueryResult) {
+        result = queryResult
+        resultColumns = Self.columns(from: queryResult)
+        if isRowDetailPresented && rowDetailSelection == nil, !queryResult.rows.isEmpty {
+            rowDetailSelection = RowDetailSelection(rowIndex: 0, focusedColumn: nil)
+        }
+        clampRowDetailSelection(rowCount: queryResult.rows.count)
+    }
+
+    private func clearResultState() {
+        result = nil
+        resultColumns = []
+        clearRowDetail()
+    }
+
+    private func clampRowDetailSelection(rowCount: Int) {
+        guard let selection = rowDetailSelection else { return }
+        guard rowCount > 0 else {
+            clearRowDetail()
+            return
+        }
+        let rowIndex = min(selection.rowIndex, max(rowCount - 1, 0))
+        let focusedColumn = validatedColumn(selection.focusedColumn)
+        rowDetailSelection = RowDetailSelection(rowIndex: rowIndex, focusedColumn: focusedColumn)
+    }
+
+    private func clearRowDetail() {
+        rowDetailSelection = nil
+        isRowDetailPresented = false
+    }
+
+    private func jsonValue(from value: DatabaseQueryValue?) -> Any {
+        guard let value else { return NSNull() }
+        switch value {
+        case .null:
+            return NSNull()
+        case .bool(let bool):
+            return bool
+        case .int(let int):
+            return int
+        case .decimal(let decimal):
+            return NSDecimalNumber(decimal: decimal)
+        case .double(let double):
+            return double
+        case .string(let string):
+            return string
+        case .date(let date):
+            return Self.iso8601Formatter.string(from: date)
+        case .data(let data):
+            return data.base64EncodedString()
+        case .uuid(let uuid):
+            return uuid.uuidString
+        }
+    }
+
+    private func validatedColumn(_ column: String?) -> String? {
+        guard let column, resultColumns.contains(column) else { return nil }
+        return column
+    }
+
+    private func writeToClipboard(_ string: String) {
+        #if os(macOS)
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(string, forType: .string)
+        #else
+        UIPasteboard.general.string = string
+        #endif
     }
 
     func allowsReadOnlyExecution(for sql: String? = nil) -> Bool {
@@ -270,4 +466,15 @@ final class DatabaseQueryEditorViewModel: ObservableObject {
         }
         return historySearchResults.first
     }
+
+    private static func columns(from result: DatabaseQueryResult) -> [String] {
+        let keys = result.rows.flatMap { $0.values.keys }
+        return Array(Set(keys)).sorted()
+    }
+
+    private static let iso8601Formatter: ISO8601DateFormatter = {
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        return formatter
+    }()
 }

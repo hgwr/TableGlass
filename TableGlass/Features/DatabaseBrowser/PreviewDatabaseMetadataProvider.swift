@@ -44,6 +44,53 @@ actor PreviewDatabaseMetadataProvider: DatabaseMetadataProvider {
     }
 }
 
+extension PreviewDatabaseMetadataProvider: DatabaseQueryExecutor {
+    func execute(_ request: DatabaseQueryRequest) async throws -> DatabaseQueryResult {
+        try await Task.sleep(nanoseconds: 10_000_000)
+        let rows = Self.previewRows(for: request.sql)
+        return DatabaseQueryResult(rows: rows, affectedRowCount: rows.count)
+    }
+
+    private static func previewRows(for sql: String) -> [DatabaseQueryRow] {
+        let lowercased = sql.lowercased()
+        if lowercased.contains("artists") {
+            return [
+                DatabaseQueryRow(values: [
+                    "id": .int(1),
+                    "name": .string("Alice & The Cats"),
+                    "country": .string("US"),
+                    "bio": .string("Emerging indie group with layered synths and long-form lyrics that test truncation handling."),
+                ]),
+                DatabaseQueryRow(values: [
+                    "id": .int(2),
+                    "name": .string("Neon Rivers"),
+                    "country": .string("DE"),
+                    "bio": .string("Known for cinematic electronica. Latest release blends acoustic strings with glitch textures."),
+                ]),
+            ]
+        }
+
+        if lowercased.contains("albums") {
+            return [
+                DatabaseQueryRow(values: [
+                    "id": .int(10),
+                    "artist_id": .int(1),
+                    "title": .string("Arcade Nights"),
+                    "metadata": .string("{\"moods\":[\"upbeat\",\"nostalgic\"],\"released\":2017}"),
+                ]),
+            ]
+        }
+
+        return [
+            DatabaseQueryRow(values: [
+                "id": .int(1),
+                "payload": .string("{\"status\":\"ok\",\"context\":\"preview\"}"),
+                "notes": .string("Preview query data available during UI tests."),
+            ])
+        ]
+    }
+}
+
 extension DatabaseSchema {
     nonisolated(unsafe) static var previewBrowserSchema: DatabaseSchema {
         DatabaseSchema(
