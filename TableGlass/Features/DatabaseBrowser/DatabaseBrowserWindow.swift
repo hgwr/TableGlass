@@ -327,9 +327,11 @@ private struct DatabaseBrowserSessionView: View {
     private var detailView: some View {
         GeometryReader { proxy in
             VStack(spacing: 0) {
-                queryEditorSection
-                    .frame(height: max(180, proxy.size.height * editorHeightRatio))
-                dragHandle(totalHeight: proxy.size.height)
+                if !isShowingRowDetail {
+                    queryEditorSection
+                        .frame(height: max(180, proxy.size.height * editorHeightRatio))
+                    dragHandle(totalHeight: proxy.size.height)
+                }
                 resultsCard
                     .frame(maxHeight: .infinity, alignment: .top)
             }
@@ -475,6 +477,10 @@ private struct DatabaseBrowserSessionView: View {
         }
         .pickerStyle(.segmented)
         .frame(maxWidth: 320)
+    }
+
+    private var isShowingRowDetail: Bool {
+        queryEditorViewModel.isRowDetailPresented
     }
 
     @MainActor

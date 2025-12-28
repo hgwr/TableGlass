@@ -323,33 +323,34 @@ private struct DatabaseQueryResultView: View {
                     description: Text("Run a query that returns rows to see them here.")
                 )
             } else {
-                ScrollView([.vertical, .horizontal]) {
-                    VStack(alignment: .leading, spacing: 6) {
-                        headerRow
-                        Divider()
-                        LazyVStack(alignment: .leading, spacing: 4) {
-                            ForEach(Array(result.rows.enumerated()), id: \.offset) { index, row in
-                                dataRow(index: index, row: row)
-                            }
-                        }
-                    }
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                }
-                .accessibilityIdentifier(DatabaseBrowserAccessibility.queryResultGrid.rawValue)
-
                 if viewModel.isRowDetailPresented, let selection = viewModel.rowDetailSelection {
                     RowDetailView(
                         fields: viewModel.detailFields(for: selection),
                         selection: selection,
                         rowCount: result.rows.count,
                         copyFormat: $viewModel.rowDetailCopyFormat,
+                        layout: .expanded,
                         onCopy: { viewModel.copyCurrentDetailSelectionToClipboard() },
                         onCopyField: { column in viewModel.copyField(column) },
                         onSelectField: { column in viewModel.focusRowDetailField(column) },
                         onClose: { viewModel.isRowDetailPresented = false }
                     )
-                    .padding(.top, 8)
                     .transition(.opacity)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+                } else {
+                    ScrollView([.vertical, .horizontal]) {
+                        VStack(alignment: .leading, spacing: 6) {
+                            headerRow
+                            Divider()
+                            LazyVStack(alignment: .leading, spacing: 4) {
+                                ForEach(Array(result.rows.enumerated()), id: \.offset) { index, row in
+                                    dataRow(index: index, row: row)
+                                }
+                            }
+                        }
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                    }
+                    .accessibilityIdentifier(DatabaseBrowserAccessibility.queryResultGrid.rawValue)
                 }
             }
         }
@@ -422,11 +423,17 @@ private struct DatabaseQueryResultView: View {
     }
 }
 
+private enum RowDetailLayout {
+    case panel
+    case expanded
+}
+
 private struct RowDetailView: View {
     let fields: [RowDetailField]
     let selection: RowDetailSelection
     let rowCount: Int
     @Binding var copyFormat: RowCopyFormat
+    let layout: RowDetailLayout
     let onCopy: () -> Void
     let onCopyField: (String) -> Void
     let onSelectField: (String) -> Void
@@ -438,6 +445,24 @@ private struct RowDetailView: View {
         #else
         Color(.secondarySystemBackground)
         #endif
+    }
+
+    private var containerBackground: Color {
+        switch layout {
+        case .panel:
+            return panelBackground
+        case .expanded:
+            return .clear
+        }
+    }
+
+    private var containerCornerRadius: CGFloat {
+        switch layout {
+        case .panel:
+            return 10
+        case .expanded:
+            return 0
+        }
     }
 
     var body: some View {
@@ -496,9 +521,10 @@ private struct RowDetailView: View {
             .accessibilityIdentifier(DatabaseBrowserAccessibility.rowDetailPanel.rawValue)
         }
         .padding(12)
-        .background(panelBackground)
-        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
-        .shadow(radius: 2, y: 1)
+        .frame(maxWidth: .infinity, maxHeight: layout == .expanded ? .infinity : nil, alignment: .topLeading)
+        .background(containerBackground)
+        .clipShape(RoundedRectangle(cornerRadius: containerCornerRadius, style: .continuous))
+        .shadow(radius: layout == .panel ? 2 : 0, y: layout == .panel ? 1 : 0)
     }
 }
 

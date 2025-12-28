@@ -35,6 +35,7 @@ TableGlass is a macOS-native database management tool built with SwiftUI. It aim
 - The **Run** button trims the editor text; empty input is ignored. Execution is disabled while a query is in flight.
 - Read-only enforcement blocks statements that start with or contain mutation keywords (INSERT/UPDATE/DELETE/ALTER/CREATE, etc.). When blocked, the Run button is disabled and an inline notice explains the restriction.
 - Results render in the **Query Results** section beneath the object header: row count, affected row count (when provided), execution time in milliseconds, and a scrollable, read-only grid of returned rows. When no rows are returned, a placeholder message is shown.
+- **Row Detail** mode expands a selected row into a full-height view inside the detail pane (the query editor collapses while expanded). The view supports per-row and per-field copy actions with TSV/JSON formats.
 - Errors surface inline in the results area with a warning icon and a **Retry** button that reuses the current SQL. The editor retains the text so users can adjust and rerun.
 
 ## Table Data Editor
