@@ -26,8 +26,8 @@ TableGlass is a macOS-native database management tool built with SwiftUI. It aim
 - **Sidebar**: tree of catalogs → namespaces/schemas → tables, views, stored procedures. Controls include Refresh (reload metadata), Expand All/Collapse All (with progress indicator while expanding), and lazy loading of children when expanding nodes.
 - **Detail area** (right pane):
   - **Query editor** card at the top with a monospaced TextEditor and a **Run** button. A spinner appears while executing. In read-only mode, the editor shows a lock hint if the text is not safe to execute. When empty, the editor surface shows a hint that you can type SQL or select a table in the sidebar to auto-generate a query.
-  - **Object header** beneath the editor displays the selected object's name, type icon, and fully qualified path, or a prompt when nothing is selected.
-  - **Detail content**: when a table is selected, a segmented control switches between **Results** and **Table Editor**. For other objects or no selection, the Results view is shown.
+  - **Object header** beneath the editor is a compact line showing the selected object's icon and fully qualified path, or a prompt when nothing is selected.
+  - **Detail content**: when a table is selected, a compact segmented control for **Results** and **Table Editor** sits next to the Detail Mode label. For other objects or no selection, the Results view is shown.
 
 ## SQL Execution Model
 

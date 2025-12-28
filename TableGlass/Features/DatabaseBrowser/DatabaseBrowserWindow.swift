@@ -359,45 +359,31 @@ private struct DatabaseBrowserSessionView: View {
     }
 
     private var resultsCard: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack(spacing: 8) {
-                Text("Results")
-                    .font(.headline)
-                Spacer()
-                if selectedTableIdentifier != nil {
-                    detailModePicker
-                }
-            }
-
-            detailSummary
+        VStack(alignment: .leading, spacing: 8) {
+            resultsHeader
             resultsContent
         }
-        .padding(16)
+        .padding(12)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .background(.regularMaterial)
         .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
     }
 
-    private var detailSummary: some View {
-        Group {
+    private var resultsHeader: some View {
+        HStack(spacing: 10) {
             if let node = session.selectedNode {
-                VStack(alignment: .leading, spacing: 4) {
-                    Text(verbatim: node.title)
-                        .font(.title3)
-                        .bold()
-                        .accessibilityIdentifier(DatabaseBrowserAccessibility.detailTitle.rawValue)
-                        .accessibilityLabel(node.title)
-                        .accessibilityValue(node.title)
-                    Label(node.kindDisplayName, systemImage: node.kind.systemImageName)
-                        .foregroundStyle(.secondary)
-                    Text(pathDescription(for: node))
-                        .font(.callout)
-                        .foregroundStyle(.secondary)
-                }
+                Label(pathDescription(for: node), systemImage: node.kind.systemImageName)
+                    .font(.subheadline.weight(.semibold))
+                    .accessibilityIdentifier(DatabaseBrowserAccessibility.detailTitle.rawValue)
+                    .accessibilityLabel(pathDescription(for: node))
             } else {
                 Text("Select an object to view details")
                     .font(.callout)
                     .foregroundStyle(.secondary)
+            }
+            Spacer()
+            if selectedTableIdentifier != nil {
+                detailModePicker
             }
         }
     }
@@ -471,12 +457,21 @@ private struct DatabaseBrowserSessionView: View {
     }
 
     private var detailModePicker: some View {
-        Picker("Detail Mode", selection: $detailDisplayMode) {
-            Text("Results").tag(DetailDisplayMode.results)
-            Text("Table Editor").tag(DetailDisplayMode.tableEditor)
+        HStack(spacing: 0) {
+            Text("Detail Mode")
+                .foregroundStyle(.secondary)
+                .padding(.trailing, 8)
+
+            Picker("Detail Mode", selection: $detailDisplayMode) {
+                Text("Results").tag(DetailDisplayMode.results)
+                Text("Table Editor").tag(DetailDisplayMode.tableEditor)
+            }
+            .labelsHidden()
+            .pickerStyle(.segmented)
+            .controlSize(.small)
+            .fixedSize()
         }
-        .pickerStyle(.segmented)
-        .frame(maxWidth: 320)
+        .font(.caption)
     }
 
     private var isShowingRowDetail: Bool {
@@ -501,18 +496,20 @@ private struct DatabaseBrowserSessionView: View {
     }
 
     private func pathDescription(for node: DatabaseObjectTreeNode) -> String {
+        let parts: [String]
         switch node.kind {
         case .catalog(let name):
-            return "Catalog \(name)"
+            parts = [name]
         case .namespace(let catalog, let name):
-            return "\(catalog).\(name)"
+            parts = [catalog, name]
         case .table(let catalog, let namespace, let name):
-            return "\(catalog).\(namespace).\(name)"
+            parts = [catalog, namespace, name]
         case .view(let catalog, let namespace, let name):
-            return "\(catalog).\(namespace).\(name)"
+            parts = [catalog, namespace, name]
         case .storedProcedure(let catalog, let namespace, let name):
-            return "\(catalog).\(namespace).\(name)"
+            parts = [catalog, namespace, name]
         }
+        return parts.filter { !$0.isEmpty }.joined(separator: ".")
     }
 }
 
