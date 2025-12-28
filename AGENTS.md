@@ -58,3 +58,4 @@ Target users are developers who prefer native macOS applications over Electron-b
 - AI commits must include `[auto-generated]` in the message.
 - Agents should create small, focused PRs (< 500 lines).
 - Human reviewers ensure UX and visual design consistency.
+- When an AI task is requested, update `Specification.md` to match the changes and fix issues until `xcodebuild` tests pass.
