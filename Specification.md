@@ -26,8 +26,8 @@ TableGlass is a macOS-native database management tool built with SwiftUI. It aim
 - **Sidebar**: tree of catalogs → namespaces/schemas → tables, views, stored procedures. Controls include Refresh (reload metadata), Expand All/Collapse All (with progress indicator while expanding), and lazy loading of children when expanding nodes.
 - **Detail area** (right pane):
   - **Query editor** card at the top with a monospaced TextEditor and a **Run** button. A spinner appears while executing. In read-only mode, the editor shows a lock hint if the text is not safe to execute. When empty, the editor surface shows a hint that you can type SQL or select a table in the sidebar to auto-generate a query.
-  - **Object header** beneath the editor displays the selected object's name, type icon, and fully qualified path, or a prompt when nothing is selected.
-  - **Detail content**: when a table is selected, a segmented control switches between **Results** and **Table Editor**. For other objects or no selection, the Results view is shown.
+  - **Object header** beneath the editor is a compact line showing the selected object's icon and fully qualified path, or a prompt when nothing is selected.
+  - **Detail content**: when a table is selected, a compact segmented control for **Results** and **Table Editor** sits next to the Detail Mode label. For other objects or no selection, the Results view is shown.
 
 ## SQL Execution Model
 
@@ -35,6 +35,7 @@ TableGlass is a macOS-native database management tool built with SwiftUI. It aim
 - The **Run** button trims the editor text; empty input is ignored. Execution is disabled while a query is in flight.
 - Read-only enforcement blocks statements that start with or contain mutation keywords (INSERT/UPDATE/DELETE/ALTER/CREATE, etc.). When blocked, the Run button is disabled and an inline notice explains the restriction.
 - Results render in the **Query Results** section beneath the object header: row count, affected row count (when provided), execution time in milliseconds, and a scrollable, read-only grid of returned rows. When no rows are returned, a placeholder message is shown.
+- **Row Detail** mode expands a selected row into a full-height view inside the detail pane (the query editor collapses while expanded). The view supports per-row and per-field copy actions with TSV/JSON formats.
 - Errors surface inline in the results area with a warning icon and a **Retry** button that reuses the current SQL. The editor retains the text so users can adjust and rerun.
 
 ## Table Data Editor

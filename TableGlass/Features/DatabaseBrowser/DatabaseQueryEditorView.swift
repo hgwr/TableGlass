@@ -293,26 +293,28 @@ struct DatabaseSearchTextField: View {
 }
 
 private struct DatabaseQueryResultView: View {
+    @ObservedObject var viewModel: DatabaseQueryEditorViewModel
     let result: DatabaseQueryResult
+    let columns: [String]
     let executionDuration: Duration?
 
-    private var columns: [String] {
-        let keys = result.rows.flatMap { $0.values.keys }
-        return Array(Set(keys)).sorted()
+    private var selectedRowIndex: Int? {
+        viewModel.rowDetailSelection?.rowIndex
+    }
+
+    private var executionTimeDescription: String? {
+        guard let executionDuration else { return nil }
+        let components = executionDuration.components
+        let millisecondsFromSeconds = Double(components.seconds) * 1_000
+        let millisecondsFromAttoseconds = Double(components.attoseconds) / 1_000_000_000_000_000
+        let total = millisecondsFromSeconds + millisecondsFromAttoseconds
+        let rounded = Int(total.rounded())
+        return "\(rounded) ms"
     }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
-            HStack(spacing: 12) {
-                Label("Rows: \(result.rows.count)", systemImage: "tablecells")
-                if let affected = result.affectedRowCount {
-                    Label("Affected: \(affected)", systemImage: "number")
-                }
-                if let executionTimeDescription {
-                    Label("Time: \(executionTimeDescription)", systemImage: "clock")
-                }
-            }
-            .font(.subheadline)
+            header
 
             if result.rows.isEmpty {
                 ContentUnavailableView(
@@ -321,21 +323,64 @@ private struct DatabaseQueryResultView: View {
                     description: Text("Run a query that returns rows to see them here.")
                 )
             } else {
-                ScrollView([.vertical, .horizontal]) {
-                    VStack(alignment: .leading, spacing: 6) {
-                        headerRow
-                        Divider()
-                        LazyVStack(alignment: .leading, spacing: 4) {
-                            ForEach(Array(result.rows.enumerated()), id: \.offset) { index, row in
-                                dataRow(index: index, row: row)
+                if viewModel.isRowDetailPresented, let selection = viewModel.rowDetailSelection {
+                    RowDetailView(
+                        fields: viewModel.detailFields(for: selection),
+                        selection: selection,
+                        rowCount: result.rows.count,
+                        copyFormat: $viewModel.rowDetailCopyFormat,
+                        layout: .expanded,
+                        onCopy: { viewModel.copyCurrentDetailSelectionToClipboard() },
+                        onCopyField: { column in viewModel.copyField(column) },
+                        onSelectField: { column in viewModel.focusRowDetailField(column) },
+                        onClose: { viewModel.isRowDetailPresented = false }
+                    )
+                    .transition(.opacity)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+                } else {
+                    ScrollView([.vertical, .horizontal]) {
+                        VStack(alignment: .leading, spacing: 6) {
+                            headerRow
+                            Divider()
+                            LazyVStack(alignment: .leading, spacing: 4) {
+                                ForEach(Array(result.rows.enumerated()), id: \.offset) { index, row in
+                                    dataRow(index: index, row: row)
+                                }
                             }
                         }
+                        .frame(maxWidth: .infinity, alignment: .leading)
                     }
-                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .accessibilityIdentifier(DatabaseBrowserAccessibility.queryResultGrid.rawValue)
                 }
-                .accessibilityIdentifier(DatabaseBrowserAccessibility.queryResultGrid.rawValue)
             }
         }
+    }
+
+    private var header: some View {
+        HStack(spacing: 12) {
+            Label("Rows: \(result.rows.count)", systemImage: "tablecells")
+            if let affected = result.affectedRowCount {
+                Label("Affected: \(affected)", systemImage: "number")
+            }
+            if let executionTimeDescription {
+                Label("Time: \(executionTimeDescription)", systemImage: "clock")
+            }
+            Spacer()
+            Button {
+                viewModel.toggleRowDetail(forRowAt: selectedRowIndex)
+            } label: {
+                Label(
+                    viewModel.isRowDetailPresented ? "Hide Row Detail" : "Row Detail",
+                    systemImage: "list.bullet.rectangle"
+                )
+            }
+            .buttonStyle(.bordered)
+            .controlSize(.small)
+            .accessibilityIdentifier(DatabaseBrowserAccessibility.rowDetailToggle.rawValue)
+            .help("Toggle an expanded row view")
+            .disabled(result.rows.isEmpty)
+        }
+        .font(.subheadline)
     }
 
     private var headerRow: some View {
@@ -350,7 +395,8 @@ private struct DatabaseQueryResultView: View {
     }
 
     private func dataRow(index: Int, row: DatabaseQueryRow) -> some View {
-        HStack(alignment: .center, spacing: 12) {
+        let isSelected = viewModel.rowDetailSelection?.rowIndex == index
+        return HStack(alignment: .center, spacing: 12) {
             ForEach(columns, id: \.self) { column in
                 let text = DatabaseTableContentViewModel.displayText(from: row.values[column])
                 Text(text)
@@ -359,19 +405,166 @@ private struct DatabaseQueryResultView: View {
                     .lineLimit(2)
             }
         }
-        .padding(.vertical, 2)
-        .background(index % 2 == 0 ? Color(nsColor: .controlBackgroundColor) : Color.clear)
-        .clipShape(RoundedRectangle(cornerRadius: 4))
+        .padding(.vertical, 4)
+        .padding(.horizontal, 6)
+        .background(
+            isSelected
+                ? Color.accentColor.opacity(0.14)
+                : index % 2 == 0 ? Color(nsColor: .controlBackgroundColor) : Color.clear
+        )
+        .clipShape(RoundedRectangle(cornerRadius: 6))
+        .contentShape(Rectangle())
+        .onTapGesture {
+            viewModel.selectRowForDetail(index)
+        }
+        .onTapGesture(count: 2) {
+            viewModel.presentRowDetail(forRowAt: index)
+        }
+    }
+}
+
+private enum RowDetailLayout {
+    case panel
+    case expanded
+}
+
+private struct RowDetailView: View {
+    let fields: [RowDetailField]
+    let selection: RowDetailSelection
+    let rowCount: Int
+    @Binding var copyFormat: RowCopyFormat
+    let layout: RowDetailLayout
+    let onCopy: () -> Void
+    let onCopyField: (String) -> Void
+    let onSelectField: (String) -> Void
+    let onClose: () -> Void
+
+    private var panelBackground: Color {
+        #if os(macOS)
+        Color(nsColor: .textBackgroundColor)
+        #else
+        Color(.secondarySystemBackground)
+        #endif
     }
 
-    private var executionTimeDescription: String? {
-        guard let executionDuration else { return nil }
-        let components = executionDuration.components
-        let millisecondsFromSeconds = Double(components.seconds) * 1_000
-        let millisecondsFromAttoseconds = Double(components.attoseconds) / 1_000_000_000_000_000
-        let total = millisecondsFromSeconds + millisecondsFromAttoseconds
-        let rounded = Int(total.rounded())
-        return "\(rounded) ms"
+    private var containerBackground: Color {
+        switch layout {
+        case .panel:
+            return panelBackground
+        case .expanded:
+            return .clear
+        }
+    }
+
+    private var containerCornerRadius: CGFloat {
+        switch layout {
+        case .panel:
+            return 10
+        case .expanded:
+            return 0
+        }
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 10) {
+                Label("Row Detail", systemImage: "list.bullet.rectangle")
+                    .font(.headline)
+                Text("Row \(selection.rowIndex + 1) of \(rowCount)")
+                    .foregroundStyle(.secondary)
+                Spacer()
+                Picker("Copy format", selection: $copyFormat) {
+                    ForEach(RowCopyFormat.allCases, id: \.self) { format in
+                        Text(format.title).tag(format)
+                    }
+                }
+                .pickerStyle(.segmented)
+                .frame(maxWidth: 200)
+                Button {
+                    onCopy()
+                } label: {
+                    Label("Copy", systemImage: "doc.on.doc")
+                }
+                .keyboardShortcut("c", modifiers: [.command])
+                .accessibilityIdentifier(DatabaseBrowserAccessibility.rowDetailCopyButton.rawValue)
+
+                Button {
+                    onClose()
+                } label: {
+                    Image(systemName: "xmark")
+                        .font(.subheadline.weight(.semibold))
+                }
+                .buttonStyle(.borderless)
+                .accessibilityIdentifier(DatabaseBrowserAccessibility.rowDetailClose.rawValue)
+            }
+
+            Divider()
+
+            ScrollView {
+                LazyVStack(alignment: .leading, spacing: 8) {
+                    ForEach(fields) { field in
+                        RowDetailFieldRow(
+                            field: field,
+                            isSelected: selection.focusedColumn == field.name,
+                            onSelect: {
+                                onSelectField(field.name)
+                            },
+                            onCopy: {
+                                onSelectField(field.name)
+                                onCopyField(field.name)
+                            }
+                        )
+                    }
+                }
+                .padding(.vertical, 2)
+            }
+            .accessibilityIdentifier(DatabaseBrowserAccessibility.rowDetailPanel.rawValue)
+        }
+        .padding(12)
+        .frame(maxWidth: .infinity, maxHeight: layout == .expanded ? .infinity : nil, alignment: .topLeading)
+        .background(containerBackground)
+        .clipShape(RoundedRectangle(cornerRadius: containerCornerRadius, style: .continuous))
+        .shadow(radius: layout == .panel ? 2 : 0, y: layout == .panel ? 1 : 0)
+    }
+}
+
+private struct RowDetailFieldRow: View {
+    let field: RowDetailField
+    let isSelected: Bool
+    let onSelect: () -> Void
+    let onCopy: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 8) {
+                Text(field.name)
+                    .font(.subheadline.weight(.semibold))
+                Spacer()
+                Button(action: onCopy) {
+                    Image(systemName: "doc.on.doc")
+                }
+                .buttonStyle(.borderless)
+                .help("Copy \(field.name)")
+                .accessibilityIdentifier(DatabaseBrowserAccessibility.rowDetailCopyField.rawValue)
+            }
+
+            Text(field.value.isEmpty ? " " : field.value)
+                .font(.callout.monospaced())
+                .foregroundStyle(.primary)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .textSelection(.enabled)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .padding(10)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .fill(isSelected ? Color.accentColor.opacity(0.14) : Color.secondary.opacity(0.08))
+        )
+        .contentShape(Rectangle())
+        .onTapGesture {
+            onSelect()
+        }
     }
 }
 
@@ -414,7 +607,9 @@ struct DatabaseQueryResultSection: View {
             .accessibilityIdentifier(DatabaseBrowserAccessibility.queryErrorMessage.rawValue)
         } else if let result = viewModel.result {
             DatabaseQueryResultView(
+                viewModel: viewModel,
                 result: result,
+                columns: viewModel.resultColumns,
                 executionDuration: viewModel.lastExecutionDuration
             )
         } else {

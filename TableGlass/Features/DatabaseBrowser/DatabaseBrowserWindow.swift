@@ -327,9 +327,11 @@ private struct DatabaseBrowserSessionView: View {
     private var detailView: some View {
         GeometryReader { proxy in
             VStack(spacing: 0) {
-                queryEditorSection
-                    .frame(height: max(180, proxy.size.height * editorHeightRatio))
-                dragHandle(totalHeight: proxy.size.height)
+                if !isShowingRowDetail {
+                    queryEditorSection
+                        .frame(height: max(180, proxy.size.height * editorHeightRatio))
+                    dragHandle(totalHeight: proxy.size.height)
+                }
                 resultsCard
                     .frame(maxHeight: .infinity, alignment: .top)
             }
@@ -357,45 +359,31 @@ private struct DatabaseBrowserSessionView: View {
     }
 
     private var resultsCard: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack(spacing: 8) {
-                Text("Results")
-                    .font(.headline)
-                Spacer()
-                if selectedTableIdentifier != nil {
-                    detailModePicker
-                }
-            }
-
-            detailSummary
+        VStack(alignment: .leading, spacing: 8) {
+            resultsHeader
             resultsContent
         }
-        .padding(16)
+        .padding(12)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .background(.regularMaterial)
         .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
     }
 
-    private var detailSummary: some View {
-        Group {
+    private var resultsHeader: some View {
+        HStack(spacing: 10) {
             if let node = session.selectedNode {
-                VStack(alignment: .leading, spacing: 4) {
-                    Text(verbatim: node.title)
-                        .font(.title3)
-                        .bold()
-                        .accessibilityIdentifier(DatabaseBrowserAccessibility.detailTitle.rawValue)
-                        .accessibilityLabel(node.title)
-                        .accessibilityValue(node.title)
-                    Label(node.kindDisplayName, systemImage: node.kind.systemImageName)
-                        .foregroundStyle(.secondary)
-                    Text(pathDescription(for: node))
-                        .font(.callout)
-                        .foregroundStyle(.secondary)
-                }
+                Label(pathDescription(for: node), systemImage: node.kind.systemImageName)
+                    .font(.subheadline.weight(.semibold))
+                    .accessibilityIdentifier(DatabaseBrowserAccessibility.detailTitle.rawValue)
+                    .accessibilityLabel(pathDescription(for: node))
             } else {
                 Text("Select an object to view details")
                     .font(.callout)
                     .foregroundStyle(.secondary)
+            }
+            Spacer()
+            if selectedTableIdentifier != nil {
+                detailModePicker
             }
         }
     }
@@ -469,12 +457,25 @@ private struct DatabaseBrowserSessionView: View {
     }
 
     private var detailModePicker: some View {
-        Picker("Detail Mode", selection: $detailDisplayMode) {
-            Text("Results").tag(DetailDisplayMode.results)
-            Text("Table Editor").tag(DetailDisplayMode.tableEditor)
+        HStack(spacing: 0) {
+            Text("Detail Mode")
+                .foregroundStyle(.secondary)
+                .padding(.trailing, 8)
+
+            Picker("Detail Mode", selection: $detailDisplayMode) {
+                Text("Results").tag(DetailDisplayMode.results)
+                Text("Table Editor").tag(DetailDisplayMode.tableEditor)
+            }
+            .labelsHidden()
+            .pickerStyle(.segmented)
+            .controlSize(.small)
+            .fixedSize()
         }
-        .pickerStyle(.segmented)
-        .frame(maxWidth: 320)
+        .font(.caption)
+    }
+
+    private var isShowingRowDetail: Bool {
+        queryEditorViewModel.isRowDetailPresented
     }
 
     @MainActor
@@ -495,18 +496,20 @@ private struct DatabaseBrowserSessionView: View {
     }
 
     private func pathDescription(for node: DatabaseObjectTreeNode) -> String {
+        let parts: [String]
         switch node.kind {
         case .catalog(let name):
-            return "Catalog \(name)"
+            parts = [name]
         case .namespace(let catalog, let name):
-            return "\(catalog).\(name)"
+            parts = [catalog, name]
         case .table(let catalog, let namespace, let name):
-            return "\(catalog).\(namespace).\(name)"
+            parts = [catalog, namespace, name]
         case .view(let catalog, let namespace, let name):
-            return "\(catalog).\(namespace).\(name)"
+            parts = [catalog, namespace, name]
         case .storedProcedure(let catalog, let namespace, let name):
-            return "\(catalog).\(namespace).\(name)"
+            parts = [catalog, namespace, name]
         }
+        return parts.filter { !$0.isEmpty }.joined(separator: ".")
     }
 }
 
@@ -1032,6 +1035,11 @@ enum DatabaseBrowserAccessibility: String {
     case queryRunButton = "databaseBrowser.query.runButton"
     case queryResultGrid = "databaseBrowser.query.resultGrid"
     case queryErrorMessage = "databaseBrowser.query.error"
+    case rowDetailToggle = "databaseBrowser.rowDetail.toggle"
+    case rowDetailPanel = "databaseBrowser.rowDetail.panel"
+    case rowDetailCopyButton = "databaseBrowser.rowDetail.copy"
+    case rowDetailCopyField = "databaseBrowser.rowDetail.copyField"
+    case rowDetailClose = "databaseBrowser.rowDetail.close"
 
     static func sidebarRow(for name: String) -> String {
         "databaseBrowser.sidebar.\(name)"

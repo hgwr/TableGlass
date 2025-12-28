@@ -105,6 +105,30 @@ final class TableGlassUITests: XCTestCase {
         XCTAssertTrue(historyField.waitForExistence(timeout: 1))
     }
 
+    @MainActor
+    func testExpandedRowDetailToggle() throws {
+        let app = makeApplication()
+        app.launchArguments.append("--uitest-database-browser")
+        app.launch()
+
+        let runButton = app.buttons["databaseBrowser.query.runButton"]
+        XCTAssertTrue(runButton.waitForExistence(timeout: 2))
+        runButton.click()
+
+        let resultGrid = app.descendants(matching: .any)["databaseBrowser.query.resultGrid"]
+        XCTAssertTrue(resultGrid.waitForExistence(timeout: 2))
+
+        let toggle = app.buttons["databaseBrowser.rowDetail.toggle"]
+        XCTAssertTrue(toggle.waitForExistence(timeout: 2))
+        toggle.click()
+
+        let detailPanel = app.descendants(matching: .any)["databaseBrowser.rowDetail.panel"]
+        XCTAssertTrue(detailPanel.waitForExistence(timeout: 2))
+
+        toggle.click()
+        XCTAssertFalse(detailPanel.waitForExistence(timeout: 1))
+    }
+
     private func replaceText(in element: XCUIElement, with text: String) {
         element.click()
         element.typeKey("a", modifierFlags: .command)
